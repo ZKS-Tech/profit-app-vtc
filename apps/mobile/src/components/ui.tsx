@@ -23,12 +23,15 @@ export function Screen({
   right,
   children,
   scroll = true,
+  realData = false,
 }: {
   title: string;
   subtitle?: string;
   right?: ReactNode;
   children: ReactNode;
   scroll?: boolean;
+  /** Écran alimenté par de vraies données (sinon badge « DÉMO »). */
+  realData?: boolean;
 }) {
   const Body = scroll ? ScrollView : View;
   return (
@@ -40,7 +43,7 @@ export function Screen({
           </Text>
           {subtitle ? <Text style={[font.small, { marginTop: 2 }]}>{subtitle}</Text> : null}
         </View>
-        <DemoBadge />
+        {realData ? <RealDataBadge /> : <DemoBadge />}
         {right}
       </View>
       <StateBanner />
@@ -62,6 +65,14 @@ export function DemoBadge() {
       accessibilityLabel="Données fictives de démonstration"
     >
       <Text style={styles.demoBadgeText}>DÉMO</Text>
+    </View>
+  );
+}
+
+export function RealDataBadge() {
+  return (
+    <View style={[styles.demoBadge, { backgroundColor: colors.successSoft }]} accessibilityLabel="Données réelles">
+      <Text style={[styles.demoBadgeText, { color: colors.success }]}>DONNÉES RÉELLES</Text>
     </View>
   );
 }

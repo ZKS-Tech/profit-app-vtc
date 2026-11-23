@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { CalendarDays, ChartColumn, House, Map, User } from 'lucide-react-native';
+import { CalendarDays, ChartColumn, House, Map, TrainFront, User } from 'lucide-react-native';
 import { colors } from '../../theme';
 
 export default function TabsLayout() {
@@ -16,13 +16,17 @@ export default function TabsLayout() {
           paddingTop: 6,
           paddingBottom: 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{ title: 'Accueil', tabBarIcon: ({ color }) => <House size={22} color={color} /> }}
+      />
+      <Tabs.Screen
+        name="arrivees"
+        options={{ title: 'Arrivées', tabBarIcon: ({ color }) => <TrainFront size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="carte"
