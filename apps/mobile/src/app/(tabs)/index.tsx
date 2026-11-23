@@ -1,223 +1,282 @@
-import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
-import { ArrowRight, Clock, Home, MapPin, Navigation, Pause } from 'lucide-react-native';
-import {
-  Button,
-  Card,
-  ConfidenceBadge,
-  Kpi,
-  Pill,
-  Row,
-  Screen,
-  SectionTitle,
-  Skeleton,
-  SourceNote,
-  Toggle,
-} from '../../components/ui';
-import { useDemo } from '../../demo/DemoContext';
-import { currentZoneId, demoDriver, today, zones } from '../../demo/data';
-import { bestZone, compareMove, eur, eurH } from '../../domain/decision';
-import { colors, font, radius, revenueColor, spacing } from '../../theme';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
+import { ChevronLeft, ChevronRight, CloudSun, PartyPopper, Plane } from 'lucide-react-native';
+import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
+import { hubArrivals, hubs, mapDays, tisseo, zones, zonesSource } from '../../data/zones';
+import { hubInflow, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS, type ZoneScore } from '../../domain/zoneScore';
+import { colors, font, radius, spacing } from '../../theme';
 
-const MIN_GAIN = 2; // € : en dessous, bouger ne vaut pas le risque
+const STEP = 30;
+const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`;
 
-export default function Dashboard() {
-  const { state, target, onTrip, setOnTrip } = useDemo();
-  const current = zones.find((z) => z.id === currentZoneId)!;
-  const best = bestZone(current, zones, 0);
-  const shouldMove = best.zone.id !== current.id && best.gain >= MIN_GAIN;
-  const reco = shouldMove ? best.zone : current;
-  const weak = state === 'insuffisant';
-  const spread = weak ? reco.spread * 2 : reco.spread;
-  const others = zones
-    .filter((z) => z.id !== current.id && z.id !== reco.id)
-    .map((z) => ({ zone: z, ...compareMove(current, z, 0) }))
-    .sort((a, b) => b.gain - a.gain)
-    .slice(0, 2);
+export default function MapHome() {
+  const [dayIdx, setDayIdx] = useState(0);
+  const [minutes, setMinutes] = useState(17 * 60);
+  const [selected, setSelected] = useState<string | null>(null);
+  const date = mapDays[dayIdx].date;
+
+  const scores = useMemo(
+    () =>
+      scoreZones({
+        zones,
+        hubs,
+        arrivals: hubArrivals,
+        date,
+        minutes,
+        alerts: tisseo.alerts,
+        alertsFetchedAt: tisseo.fetchedAt,
+      }),
+    [date, minutes],
+  );
+  const byId = useMemo(() => Object.fromEntries(scores.map((s) => [s.zoneId, s])), [scores]);
+  const top = scores.slice(0, 5);
+  // Couleurs relatives : le quartier le plus favorable du moment prend la teinte la plus forte.
+  const maxScore = Math.max(1, scores[0].score);
+  const rel = (score: number) => scoreColor((score / maxScore) * 99);
+  const current: ZoneScore = byId[selected ?? top[0].zoneId];
+  const currentZone = zones.find((z) => z.id === current.zoneId)!;
+  const rank = scores.findIndex((s) => s.zoneId === current.zoneId) + 1;
+
+  const airport = hubs.find((h) => h.id === 'aeroport')!;
+  const airportIn = hubInflow(hubArrivals.find((h) => h.hubId === 'aeroport')?.days[date], minutes);
 
   return (
-    <Screen
-      title={`Bonjour ${demoDriver.firstName}`}
-      subtitle={`${demoDriver.dateLabel} · ${demoDriver.nowLabel} · ${demoDriver.city}`}
-    >
-      <Card style={styles.statusCard}>
-        <View style={{ flex: 1 }}>
-          <Row>
-            <View style={[styles.dot, { backgroundColor: onTrip ? colors.warning : colors.success }]} />
-            <Text style={font.h3}>{onTrip ? 'En course' : 'Disponible · mode En activité'}</Text>
-          </Row>
-          <Text style={[font.tiny, { marginTop: 4 }]}>
-            État déclaré par vous : l’app ne déduit pas votre statut Uber du GPS.
-          </Text>
+    <Screen title="Carte de Toulouse" subtitle="Où la demande devrait être la plus forte" realData>
+      <Row>
+        {mapDays.map((d, i) => {
+          const active = i === dayIdx;
+          return (
+            <Pressable
+              key={d.date}
+              onPress={() => setDayIdx(i)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              style={[styles.chip, active && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, active && { color: '#fff' }]}>{d.label}</Text>
+            </Pressable>
+          );
+        })}
+      </Row>
+
+      <Card style={styles.timeBar}>
+        <Pressable
+          onPress={() => setMinutes((m) => Math.max(5 * 60, m - STEP))}
+          accessibilityRole="button"
+          accessibilityLabel="30 minutes plus tôt"
+          hitSlop={10}
+          style={styles.stepBtn}
+        >
+          <ChevronLeft size={22} color={colors.text} />
+        </Pressable>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={font.h2}>{fmt(minutes)}</Text>
+          <Text style={font.tiny}>prévision pour l’heure qui suit</Text>
         </View>
-        <Toggle value={onTrip} onChange={setOnTrip} label="Je suis en course" />
+        <Pressable
+          onPress={() => setMinutes((m) => Math.min(23 * 60 + 30, m + STEP))}
+          accessibilityRole="button"
+          accessibilityLabel="30 minutes plus tard"
+          hitSlop={10}
+          style={styles.stepBtn}
+        >
+          <ChevronRight size={22} color={colors.text} />
+        </Pressable>
       </Card>
 
-      {state === 'chargement' ? (
-        <>
-          <Skeleton height={230} />
-          <Skeleton height={120} />
-        </>
-      ) : onTrip ? (
-        <Card style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl }}>
-          <Pause size={28} color={colors.warning} />
-          <Text style={[font.h2, { textAlign: 'center' }]}>Course en cours</Text>
-          <Text style={[font.small, { textAlign: 'center' }]}>
-            Pas de recommandation pendant la course. On reprend dès que vous repassez « Disponible ».
-          </Text>
-        </Card>
-      ) : (
-        <>
-          <Card accent={shouldMove ? colors.primary : colors.border}>
-            <Row style={{ justifyContent: 'space-between' }}>
-              <Text style={[font.small, { textTransform: 'uppercase', letterSpacing: 0.6 }]}>
-                Recommandation
-              </Text>
-              <Pill
-                label={shouldMove ? `+${eur(best.gain)} sur 1h30` : 'Rester sur place'}
-                color={shouldMove ? colors.success : colors.textMuted}
-              />
-            </Row>
-            <Row style={{ marginTop: spacing.sm }}>
-              <MapPin size={22} color={colors.primary} />
-              <Text style={[font.h1, { fontSize: 26 }]}>
-                {shouldMove ? `Rejoindre ${reco.name}` : `Rester · ${current.name}`}
-              </Text>
-            </Row>
-
-            <View style={styles.kpiRow}>
-              <Kpi
-                label="Revenu net estimé"
-                value={eurH(reco.netPerHour[0])}
-                hint={`entre ${reco.netPerHour[0] - spread} et ${reco.netPerHour[0] + spread} €/h`}
-              />
-              <Kpi
-                label="Votre objectif"
-                value={eurH(target)}
-                hint={reco.netPerHour[0] >= target ? 'atteint' : `${reco.netPerHour[0] - target} €/h`}
-                tone={reco.netPerHour[0] >= target ? 'up' : 'down'}
-              />
-            </View>
-
-            <View style={styles.why}>
-              <Text style={[font.small, { color: colors.text }]}>
-                <Text style={{ fontWeight: '700' }}>Pourquoi ? </Text>
-                {shouldMove ? 'Zone recommandée car ' : 'Bouger ne rapporterait pas assez : '}
-                {reco.reason}.
-              </Text>
-              {shouldMove && (
-                <Text style={[font.small, { marginTop: 6 }]}>
-                  Rester : {eur(best.stay)} · Y aller : {eur(best.move)} (trajet {reco.accessMin} min,{' '}
-                  {eur(reco.accessCost, 2)} de coûts)
-                </Text>
-              )}
-              <Row style={{ marginTop: 8 }}>
-                <Text style={font.small}>Confiance</Text>
-                <ConfidenceBadge level={weak ? 'faible' : reco.confidence} />
-              </Row>
-            </View>
-
-            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-              <Button
-                label="Voir sur la carte"
-                icon={<ArrowRight size={18} color="#fff" />}
-                onPress={() => router.push('/carte')}
-              />
-            </View>
-            <SourceNote>
-              Estimation VTC Profit AI (pas une donnée Uber) · historique importé + GPS + vols/trains · mise à jour
-              il y a 4 min
-            </SourceNote>
-          </Card>
-
-          <SectionTitle>Autres options</SectionTitle>
-          <Card style={{ paddingVertical: spacing.sm }}>
-            {shouldMove && (
-              <Option
-                icon={<Navigation size={18} color={colors.textMuted} />}
-                title={`Rester · ${current.name}`}
-                detail={`${eurH(current.netPerHour[0])} · aucun trajet`}
-                value={eur(0)}
-              />
-            )}
-            {others.map((o) => (
-              <Option
-                key={o.zone.id}
-                icon={<View style={[styles.dot, { backgroundColor: revenueColor(o.zone.netPerHour[0], target) }]} />}
-                title={o.zone.name}
-                detail={`${eurH(o.zone.netPerHour[0])} · ${o.zone.accessMin} min · ${eur(o.zone.accessCost, 2)}`}
-                value={`${o.gain >= 0 ? '+' : ''}${eur(o.gain)}`}
-                negative={o.gain < 0}
-              />
+      <View style={styles.map}>
+        <Svg width="100%" height="100%" viewBox="40 60 920 880">
+          <G>
+            {zones.map((z) => {
+              const s = byId[z.id];
+              const isSel = z.id === current.zoneId;
+              return (
+                <Path
+                  key={z.id}
+                  d={z.path}
+                  fill={rel(s.score)}
+                  stroke={isSel ? '#FFFFFF' : '#0A111F'}
+                  strokeWidth={isSel ? 4 : 1.5}
+                  onPress={() => setSelected(z.id)}
+                />
+              );
+            })}
+          </G>
+          {/* Aéroport : hors commune de Toulouse */}
+          <Circle
+            cx={airport.x}
+            cy={airport.y}
+            r={26}
+            fill={rel(Math.min(100, Math.round((airportIn.seats / 1500) * 100)))}
+            stroke="#F5C451"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+          />
+          <SvgText x={airport.x} y={airport.y + 46} fill={colors.textMuted} fontSize={22} textAnchor="middle">
+            Aéroport
+          </SvgText>
+          {top.slice(0, 3).map((s, i) => {
+            const z = zones.find((x) => x.id === s.zoneId)!;
+            return (
+              <G key={s.zoneId}>
+                <Circle cx={z.cx} cy={z.cy} r={17} fill="#0A111F" stroke="#7BD88F" strokeWidth={2} />
+                <SvgText x={z.cx} y={z.cy + 7} fill="#7BD88F" fontSize={20} fontWeight="700" textAnchor="middle">
+                  {i + 1}
+                </SvgText>
+              </G>
+            );
+          })}
+          {hubs
+            .filter((h) => h.id === 'matabiau')
+            .map((h) => (
+              <Circle key={h.id} cx={h.x} cy={h.y} r={7} fill="#fff" stroke="#0A111F" strokeWidth={2} />
             ))}
-            <Option
-              icon={<Home size={18} color={colors.textMuted} />}
-              title="Anticiper le retour"
-              detail="Fin prévue à 15h00 · courses vers l’est à privilégier à partir de 14h30"
-              last
-            />
-          </Card>
-
-          <Card style={styles.nextSlot}>
-            <Clock size={20} color={colors.success} />
-            <View style={{ flex: 1 }}>
-              <Text style={font.h3}>Prochain créneau favorable · 13h00–14h30</Text>
-              <Text style={font.small}>Centre · pluie annoncée, demande en hausse</Text>
-            </View>
-          </Card>
-        </>
-      )}
-
-      <SectionTitle>Aujourd’hui</SectionTitle>
-      <View style={styles.kpiRow}>
-        <Kpi label="Après coûts variables" value={eur(today.contribution)} />
-        <Kpi label="Revenu net / h" value={eurH(today.contribution / today.hours)} />
-        <Kpi label="Km à vide" value={`${today.emptyKm} km`} />
+        </Svg>
       </View>
+
+      <View style={styles.legend}>
+        <Text style={font.tiny}>Moins favorable</Text>
+        {SCORE_COLORS.map((c) => (
+          <View key={c} style={[styles.legendBox, { backgroundColor: c }]} />
+        ))}
+        <Text style={font.tiny}>plus favorable (à cette heure)</Text>
+      </View>
+
+      <Card accent={colors.primary}>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={font.small}>
+              {rank === 1 ? 'Zone la plus favorable' : `${rank}ᵉ zone sur ${zones.length}`} · {fmt(minutes)}–
+              {fmt(minutes + 60)}
+            </Text>
+            <Text style={font.h2}>{currentZone.name}</Text>
+          </View>
+          <View style={[styles.scoreBadge, { backgroundColor: rel(current.score) }]}>
+            <Text style={styles.scoreText}>{current.score}</Text>
+          </View>
+        </Row>
+        <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+          {current.factors.map((f) => (
+            <View key={f.key}>
+              <Row style={{ justifyContent: 'space-between' }}>
+                <Text style={font.h3}>{f.label}</Text>
+                <Text style={font.tiny}>poids {Math.round(WEIGHTS[f.key] * 100)} %</Text>
+              </Row>
+              <View style={styles.track}>
+                <View style={[styles.fill, { width: `${Math.round(f.value * 100)}%` }]} />
+              </View>
+              <Text style={[font.small, { marginTop: 2 }]}>{f.detail}</Text>
+            </View>
+          ))}
+        </View>
+        <SourceNote>
+          Potentiel de demande sur 100, pas un revenu garanti. Modèle v0 non calibré : confiance faible tant que
+          l’historique de Fabrice n’est pas intégré.
+        </SourceNote>
+      </Card>
+
+      <SectionTitle>Top 5 des quartiers</SectionTitle>
+      <Card style={{ paddingVertical: spacing.xs }}>
+        {top.map((s, i) => {
+          const z = zones.find((x) => x.id === s.zoneId)!;
+          const main = [...s.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0];
+          return (
+            <Pressable
+              key={s.zoneId}
+              onPress={() => setSelected(s.zoneId)}
+              style={[styles.topRow, i < top.length - 1 && styles.topBorder]}
+              accessibilityRole="button"
+            >
+              <Text style={[font.h3, { width: 22, color: colors.textMuted }]}>{i + 1}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={font.h3}>{z.name}</Text>
+                <Text style={font.tiny} numberOfLines={1}>
+                  {main.label}
+                </Text>
+              </View>
+              <View style={[styles.miniBadge, { backgroundColor: rel(s.score) }]}>
+                <Text style={styles.miniText}>{s.score}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </Card>
+
+      <SectionTitle>Pas encore pris en compte</SectionTitle>
+      <Card style={{ gap: spacing.md }}>
+        <Row>
+          <Plane size={16} color={colors.warning} />
+          <Text style={[font.small, { flex: 1 }]}>
+            Vols de l’aéroport : accès demandé à Aéroport Toulouse-Blagnac. Seuls les cars sont comptés
+            ({airportIn.items.length} dans l’heure).
+          </Text>
+        </Row>
+        <Row>
+          <PartyPopper size={16} color={colors.warning} />
+          <Text style={[font.small, { flex: 1 }]}>
+            Événements (matchs, concerts, salons) : aucune source ouverte à jour. Calendrier à constituer.
+          </Text>
+        </Row>
+        <Row>
+          <CloudSun size={16} color={colors.warning} />
+          <Text style={[font.small, { flex: 1 }]}>Météo : compte Météo-France (gratuit) à créer.</Text>
+        </Row>
+      </Card>
+
+      <SourceNote>
+        Quartiers : {zonesSource.name}, {zonesSource.licence}. Trains : horaires SNCF ; cars : FlixBus et BlaBlaCar Bus
+        (ODbL). Perturbations : Tisséo temps réel (ODbL), relevé du{' '}
+        {new Date(tisseo.fetchedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.
+      </SourceNote>
     </Screen>
   );
 }
 
-function Option({
-  icon,
-  title,
-  detail,
-  value,
-  negative,
-  last,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  detail: string;
-  value?: string;
-  negative?: boolean;
-  last?: boolean;
-}) {
-  return (
-    <View style={[styles.option, !last && styles.optionBorder]}>
-      <View style={{ width: 22, alignItems: 'center' }}>{icon}</View>
-      <View style={{ flex: 1 }}>
-        <Text style={font.h3}>{title}</Text>
-        <Text style={font.small}>{detail}</Text>
-      </View>
-      {value ? (
-        <Text style={[font.h3, { color: negative ? colors.danger : colors.textMuted }]}>{value}</Text>
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  statusCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  kpiRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  why: {
-    marginTop: spacing.md,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
+  chip: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  option: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
-  optionBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  nextSlot: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  timeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  stepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  map: {
+    aspectRatio: 920 / 880,
+    width: '100%',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: '#0D1628',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  legendBox: { width: 22, height: 10, borderRadius: 2 },
+  scoreBadge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  scoreText: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  track: { height: 6, backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, overflow: 'hidden', marginTop: 4 },
+  fill: { height: 6, backgroundColor: colors.primary, borderRadius: radius.pill },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 10 },
+  topBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  miniBadge: { minWidth: 36, paddingVertical: 4, borderRadius: radius.pill, alignItems: 'center' },
+  miniText: { color: '#fff', fontWeight: '800', fontSize: 13 },
 });
