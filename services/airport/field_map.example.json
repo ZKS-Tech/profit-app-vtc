@@ -1,0 +1,15 @@
+{
+  "_comment": "Correspondance champ de l'API ATB -> champ normalisé. Le schéma des réponses n'est pas documenté publiquement : copier ce fichier en field_map.json et le remplir à partir de la première réponse réelle (echantillon-reponse.json). Chemins pointés acceptés, ex. \"airline.code\". Ne rien deviner.",
+  "flight_number": null,
+  "scheduled": null,
+  "estimated": null,
+  "actual": null,
+  "status": null,
+  "cancelled_status_values": [],
+  "airline": null,
+  "other_airport": null,
+  "other_city": null,
+  "aircraft_type": null,
+  "seats": null,
+  "naive_timezone": "Europe/Paris"
+}
