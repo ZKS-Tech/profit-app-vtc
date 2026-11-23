@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Bus, Plane, TrainFront, TriangleAlert, Users } from 'lucide-react-native';
 import { Card, Pill, Row, Screen, SectionTitle, SourceNote, Toggle } from '../../components/ui';
-import { gareRoutiereDays, matabiauDays, type DayEntry } from '../../data/arrivals';
+import { aeroportCarsDays, gareRoutiereDays, matabiauDays, type DayEntry } from '../../data/arrivals';
 import {
   EXIT_DELAY,
   findPeaks,
@@ -26,11 +26,13 @@ type Place = {
 const places: Place[] = [
   { id: 'matabiau', label: 'Gare Matabiau', icon: TrainFront, days: matabiauDays, kind: 'train' },
   { id: 'routiere', label: 'Gare routière', icon: Bus, days: gareRoutiereDays, kind: 'car' },
-  { id: 'aeroport', label: 'Aéroport', icon: Plane, note: 'Source des vols à choisir (API payante).' },
+  { id: 'aeroport', label: 'Aéroport', icon: Plane, days: aeroportCarsDays, kind: 'car' },
 ];
 
 const typeColor = (a: Arrival) =>
-  a.type === 'FlixBus'
+  a.type === 'Avion'
+    ? '#F5C451'
+    : a.type === 'FlixBus'
     ? '#8BD43F'
     : a.type === 'BlaBlaCar Bus'
       ? '#F27B7D'
@@ -90,6 +92,20 @@ export default function ArrivalsScreen() {
           );
         })}
       </Row>
+
+      {placeId === 'aeroport' && (
+        <Card style={styles.flightsCard}>
+          <Plane size={18} color={colors.warning} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={font.h3}>Vols : pas encore de données</Text>
+            <Text style={font.small}>
+              L’API officielle de l’aéroport exige une autorisation, à demander à Aéroport Toulouse-Blagnac. Le
+              connecteur est prêt : arrivées et départs, retards, annulations, voyageurs estimés par tranche de 30
+              min. En attendant, seuls les cars longue distance sont affichés ci-dessous.
+            </Text>
+          </View>
+        </Card>
+      )}
 
       {!place.days ? (
         <Card style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl }}>
@@ -286,6 +302,13 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  flightsCard: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    alignItems: 'flex-start',
+    borderColor: colors.warning,
+    borderStyle: 'dashed',
+  },
   alert: {
     flexDirection: 'row',
     gap: spacing.md,

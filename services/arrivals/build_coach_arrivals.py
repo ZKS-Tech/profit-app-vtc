@@ -55,7 +55,9 @@ def gtfs_time(service_day: Date, hhmmss: str, tz: ZoneInfo) -> datetime:
     return (noon - timedelta(hours=12) + timedelta(hours=h, minutes=m, seconds=s)).astimezone(PARIS)
 
 
-def feed_arrivals(operator: str, gtfs: str, stop_ids: set[str], days: list[Date]) -> list[tuple[datetime, dict]]:
+def feed_arrivals(
+    operator: str, gtfs: str, stop_ids: set[str], days: list[Date], exclude_from: list[str]
+) -> list[tuple[datetime, dict]]:
     agency_tz = ZoneInfo(next(read_csv(os.path.join(gtfs, "agency.txt")))["agency_timezone"])
     stops = {r["stop_id"]: r["stop_name"] for r in read_csv(os.path.join(gtfs, "stops.txt"))}
     # Jours de service à examiner : la veille et le lendemain couvrent les décalages horaires.
@@ -78,6 +80,9 @@ def feed_arrivals(operator: str, gtfs: str, stop_ids: set[str], days: list[Date]
         tid = r["trip_id"]
         if first[tid][1] == r["stop_id"] or tid not in trips:
             continue  # départ depuis cet arrêt : personne n'arrive
+        origin = stops.get(first[tid][1], "?")
+        if any(x.lower() in origin.lower() for x in exclude_from):
+            continue  # ex. navette centre-ville → aéroport : des voyageurs qui partent, pas qui arrivent
         for sd in service_days:
             if trips[tid]["service_id"] in services[sd]:
                 when = gtfs_time(sd, r["arrival_time"], agency_tz)
@@ -88,7 +93,7 @@ def feed_arrivals(operator: str, gtfs: str, stop_ids: set[str], days: list[Date]
                             "type": operator,
                             "longDistance": True,
                             "train": trips[tid].get("trip_short_name") or "",
-                            "from": stops.get(first[tid][1], "?"),
+                            "from": origin,
                             "capacity": COACH_CAPACITY,
                         },
                     )
@@ -103,13 +108,15 @@ def main() -> None:
     p.add_argument("--name", required=True)
     p.add_argument("--slug", required=True)
     p.add_argument("--out-dir", required=True)
+    p.add_argument("--exclude-from", default="", help="Origines à ignorer (sous-chaînes, séparées par des virgules)")
     a = p.parse_args()
 
     days = [datetime.strptime(d, "%Y-%m-%d").date() for d in a.dates.split(",")]
     found: list[tuple[datetime, dict]] = []
     for spec in a.feed:
         operator, gtfs, ids = spec.split(":", 2)
-        found += feed_arrivals(operator, gtfs, set(ids.split(",")), days)
+        excl = [x for x in a.exclude_from.split(",") if x]
+        found += feed_arrivals(operator, gtfs, set(ids.split(",")), days, excl)
 
     os.makedirs(a.out_dir, exist_ok=True)
     for day in days:
