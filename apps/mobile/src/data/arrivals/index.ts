@@ -1,12 +1,17 @@
-// Données RÉELLES : arrivées planifiées extraites du GTFS SNCF (open data, licence ODbL)
-// par services/arrivals/build_arrivals.py. Ne pas modifier à la main.
+// Données RÉELLES : arrivées planifiées extraites des GTFS open data (licence ODbL) par
+// services/arrivals/build_arrivals.py (SNCF) et build_coach_arrivals.py (FlixBus, BlaBlaCar Bus).
+// Ne pas modifier à la main.
 import type { ArrivalDay } from '../../domain/arrivals';
-import d1 from './matabiau-2026-11-24.json';
-import d2 from './matabiau-2026-11-27.json';
-import d3 from './matabiau-2026-12-01.json';
+import m1 from './matabiau-2026-11-24.json';
+import m2 from './matabiau-2026-11-27.json';
+import m3 from './matabiau-2026-12-01.json';
+import g1 from './gare-routiere-2026-11-24.json';
+import g2 from './gare-routiere-2026-11-27.json';
+import g3 from './gare-routiere-2026-12-01.json';
 
-export const matabiauDays: { label: string; data: ArrivalDay }[] = [
-  { label: 'Mar. 24 nov.', data: d1 as ArrivalDay },
-  { label: 'Ven. 27 nov.', data: d2 as ArrivalDay },
-  { label: 'Mar. 1er déc.', data: d3 as ArrivalDay },
-];
+export type DayEntry = { label: string; data: ArrivalDay };
+
+const labels = ['Mar. 24 nov.', 'Ven. 27 nov.', 'Mar. 1er déc.'];
+
+export const matabiauDays: DayEntry[] = [m1, m2, m3].map((d, i) => ({ label: labels[i], data: d as ArrivalDay }));
+export const gareRoutiereDays: DayEntry[] = [g1, g2, g3].map((d, i) => ({ label: labels[i], data: d as ArrivalDay }));

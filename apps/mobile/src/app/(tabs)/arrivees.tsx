@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Bus, Plane, TrainFront, TriangleAlert, Users } from 'lucide-react-native';
 import { Card, Pill, Row, Screen, SectionTitle, SourceNote, Toggle } from '../../components/ui';
-import { matabiauDays } from '../../data/arrivals';
+import { gareRoutiereDays, matabiauDays, type DayEntry } from '../../data/arrivals';
 import {
   EXIT_DELAY,
   findPeaks,
@@ -14,18 +14,31 @@ import {
 } from '../../domain/arrivals';
 import { colors, font, radius, spacing } from '../../theme';
 
-const places = [
-  { id: 'matabiau', label: 'Gare Matabiau', icon: TrainFront, ready: true },
-  { id: 'aeroport', label: 'Aéroport', icon: Plane, ready: false, note: 'Source des vols à choisir (API payante).' },
-  { id: 'routiere', label: 'Gare routière', icon: Bus, ready: false, note: 'Horaires FlixBus et BlaBlaCar Bus : en cours d’intégration.' },
+type Place = {
+  id: string;
+  label: string;
+  icon: typeof TrainFront;
+  days?: DayEntry[];
+  note?: string;
+  kind?: 'train' | 'car';
+};
+
+const places: Place[] = [
+  { id: 'matabiau', label: 'Gare Matabiau', icon: TrainFront, days: matabiauDays, kind: 'train' },
+  { id: 'routiere', label: 'Gare routière', icon: Bus, days: gareRoutiereDays, kind: 'car' },
+  { id: 'aeroport', label: 'Aéroport', icon: Plane, note: 'Source des vols à choisir (API payante).' },
 ];
 
 const typeColor = (a: Arrival) =>
-  a.type.startsWith('TGV') || a.type === 'OUIGO'
-    ? colors.primary
-    : a.longDistance
-      ? '#7FB2FF'
-      : colors.textFaint;
+  a.type === 'FlixBus'
+    ? '#8BD43F'
+    : a.type === 'BlaBlaCar Bus'
+      ? '#F27B7D'
+      : a.type.startsWith('TGV') || a.type === 'OUIGO'
+        ? colors.primary
+        : a.longDistance
+          ? '#7FB2FF'
+          : colors.textFaint;
 
 export default function ArrivalsScreen() {
   const [placeId, setPlaceId] = useState('matabiau');
@@ -34,16 +47,19 @@ export default function ArrivalsScreen() {
   const [showRegional, setShowRegional] = useState(false);
 
   const place = places.find((p) => p.id === placeId)!;
-  const day = matabiauDays[dayIdx].data;
+  const days = place.days ?? matabiauDays;
+  const isTrain = place.kind === 'train';
+  const day = days[dayIdx].data;
   const peaks = useMemo(() => findPeaks(day), [day]);
-  const hours = useMemo(() => hourly(day), [day]);
-  const maxSeats = Math.max(...matabiauDays.flatMap((d) => hourly(d.data).map((h) => h.longSeats + h.otherSeats)));
+  const hours = useMemo(() => (isTrain ? hourly(day) : hourly(day, 0, 23)), [day, isTrain]);
+  const maxSeats = Math.max(...days.flatMap((d) => hourly(d.data, 0, 23).map((h) => h.longSeats + h.otherSeats)));
 
   const ldCount = longDistanceCount(day);
-  const refCount = Math.max(...matabiauDays.map((d) => longDistanceCount(d.data)));
+  const refCount = Math.max(...days.map((d) => longDistanceCount(d.data)));
   const coaches = day.arrivals.filter((a) => a.type === 'Car TER').length;
-  const reduced = ldCount < refCount * 0.6;
-  const normalCounts = matabiauDays.map((d) => longDistanceCount(d.data)).filter((n) => n >= refCount * 0.6);
+  // Alerte « service réduit » : seulement pour la gare SNCF (les cars varient fortement selon le jour).
+  const reduced = isTrain && ldCount < refCount * 0.6;
+  const normalCounts = days.map((d) => longDistanceCount(d.data)).filter((n) => n >= refCount * 0.6);
   const normalRange =
     Math.min(...normalCounts) === refCount ? `${refCount}` : `${Math.min(...normalCounts)} à ${refCount}`;
 
@@ -52,7 +68,7 @@ export default function ArrivalsScreen() {
   );
 
   return (
-    <Screen title="Arrivées" subtitle="Quand les voyageurs arrivent, où les attendre" realData={place.ready}>
+    <Screen title="Arrivées" subtitle="Quand les voyageurs arrivent, où les attendre" realData={!!place.days}>
       <Row style={{ flexWrap: 'wrap' }}>
         {places.map((p) => {
           const active = p.id === placeId;
@@ -60,7 +76,10 @@ export default function ArrivalsScreen() {
           return (
             <Pressable
               key={p.id}
-              onPress={() => setPlaceId(p.id)}
+              onPress={() => {
+                setPlaceId(p.id);
+                setHour(null);
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               style={[styles.chip, active && styles.chipActive]}
@@ -72,7 +91,7 @@ export default function ArrivalsScreen() {
         })}
       </Row>
 
-      {!place.ready ? (
+      {!place.days ? (
         <Card style={{ alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl }}>
           <place.icon size={28} color={colors.textMuted} />
           <Text style={font.h3}>Pas encore de données</Text>
@@ -81,7 +100,7 @@ export default function ArrivalsScreen() {
       ) : (
         <>
           <Row>
-            {matabiauDays.map((d, i) => {
+            {days.map((d, i) => {
               const active = i === dayIdx;
               return (
                 <Pressable
@@ -111,10 +130,10 @@ export default function ArrivalsScreen() {
             </Card>
           )}
 
-          <SectionTitle>Pics grandes lignes</SectionTitle>
+          <SectionTitle>{isTrain ? 'Pics grandes lignes' : 'Pics d’arrivées de cars'}</SectionTitle>
           {peaks.length === 0 ? (
             <Card>
-              <Text style={font.small}>Aucun train grandes lignes ce jour.</Text>
+              <Text style={font.small}>Aucune arrivée longue distance ce jour.</Text>
             </Card>
           ) : (
             peaks.map((p) => (
@@ -178,22 +197,28 @@ export default function ArrivalsScreen() {
             <Row style={{ marginTop: spacing.sm, gap: spacing.lg }}>
               <Row style={{ gap: 6 }}>
                 <View style={[styles.swatch, { backgroundColor: colors.primary }]} />
-                <Text style={font.tiny}>Grandes lignes</Text>
+                <Text style={font.tiny}>{isTrain ? 'Grandes lignes' : 'Cars longue distance'}</Text>
               </Row>
-              <Row style={{ gap: 6 }}>
-                <View style={[styles.swatch, { backgroundColor: colors.surfaceHigh }]} />
-                <Text style={font.tiny}>TER et cars</Text>
-              </Row>
+              {isTrain && (
+                <Row style={{ gap: 6 }}>
+                  <View style={[styles.swatch, { backgroundColor: colors.surfaceHigh }]} />
+                  <Text style={font.tiny}>TER et cars</Text>
+                </Row>
+              )}
             </Row>
-            <Text style={[font.tiny, { marginTop: 6 }]}>Touchez une heure pour voir ses trains.</Text>
+            <Text style={[font.tiny, { marginTop: 6 }]}>
+              Touchez une heure pour voir ses {isTrain ? 'trains' : 'cars'}.
+            </Text>
           </Card>
 
           <SectionTitle
             right={
-              <Row style={{ gap: 6 }}>
-                <Text style={font.tiny}>TER et cars</Text>
-                <Toggle value={showRegional} onChange={setShowRegional} label="Afficher aussi les TER et cars" />
-              </Row>
+              isTrain ? (
+                <Row style={{ gap: 6 }}>
+                  <Text style={font.tiny}>TER et cars</Text>
+                  <Toggle value={showRegional} onChange={setShowRegional} label="Afficher aussi les TER et cars" />
+                </Row>
+              ) : undefined
             }
           >
             {hour === null ? 'Toutes les arrivées' : `Arrivées de ${hour}h à ${hour + 1}h`}
@@ -201,7 +226,7 @@ export default function ArrivalsScreen() {
           <Card style={{ paddingVertical: spacing.xs }}>
             {list.length === 0 ? (
               <Text style={[font.small, { paddingVertical: spacing.md }]}>
-                Aucune arrivée grandes lignes sur ce créneau.
+                Aucune arrivée longue distance sur ce créneau.
               </Text>
             ) : (
               list.map((a, i) => <TrainRow key={a.train + a.time + i} a={a} border={i < list.length - 1} />)
@@ -209,10 +234,10 @@ export default function ArrivalsScreen() {
           </Card>
 
           <SourceNote>
-            Horaires théoriques SNCF ({day.source.name}, licence {day.source.licence}), version du{' '}
-            {day.source.feedVersion?.split('-').reverse().join('/')}. Retards en temps réel : prochaine étape. Les
-            places sont une capacité indicative par type de train, pas l’occupation réelle. Sortie estimée{' '}
-            {EXIT_DELAY.min} à {EXIT_DELAY.max} min après l’arrivée (à vérifier avec Fabrice).
+            {day.source.name}, open data, licence {day.source.licence}, version du{' '}
+            {day.source.feedVersion?.split('-').reverse().join('/')}. Retards en temps réel : prochaine étape.{' '}
+            {day.capacityNote} Sortie estimée {EXIT_DELAY.min} à {EXIT_DELAY.max} min après l’arrivée (à vérifier
+            avec Fabrice).
           </SourceNote>
         </>
       )}
@@ -232,7 +257,7 @@ function TrainRow({ a, border }: { a: Arrival; border?: boolean }) {
       <Text style={[font.body, { flex: 1 }]} numberOfLines={1}>
         {shortStation(a.from)}
       </Text>
-      <Text style={font.tiny}>n° {a.train}</Text>
+      {a.train ? <Text style={font.tiny}>n° {a.train}</Text> : null}
     </View>
   );
 }
