@@ -2,7 +2,7 @@
   "expo": {
     "name": "VTC Profit AI",
     "slug": "vtc-profit-ai",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -18,7 +18,13 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.zkstech.vtcprofitai",
-      "versionCode": 3
+      "versionCode": 4,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -58,6 +64,12 @@
         "projectId": "11aee2b9-c8d5-4a21-8660-d285294e93ef"
       }
     },
-    "owner": "evanlgz"
+    "owner": "evanlgz",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/11aee2b9-c8d5-4a21-8660-d285294e93ef"
+    }
   }
 }
