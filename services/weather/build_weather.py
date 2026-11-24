@@ -32,6 +32,7 @@ STATION = "31069001"  # Toulouse-Blagnac
 WCS = f"{BASE}/arome/1.0/wcs/MF-NWP-HIGHRES-AROME-001-FRANCE-WCS"
 BOX = {"long": (1.35, 1.52), "lat": (43.53, 43.67)}  # commune de Toulouse
 PAUSE_S = 0.7  # quota : 100 requêtes/minute
+MIN_HOURS = 30  # une exécution AROME complète couvre environ 2 jours
 
 
 def get(url: str) -> bytes:
@@ -60,19 +61,27 @@ def latest_run_coverage() -> tuple[str, list[str]]:
     caps = get(f"{WCS}/GetCapabilities?service=WCS&version=2.0.1&language=fre").decode("utf-8", "replace")
     ids = sorted(i for i in re.findall(r"<wcs:CoverageId>([^<]+)</wcs:CoverageId>", caps)
                  if i.startswith("TOTAL_PRECIPITATION__") and i.endswith("_PT1H"))
-    # Exécution la plus récente dont la description est déjà publiée (la dernière peut être incomplète).
-    for cov in reversed(ids):
+    # Exécution la plus récente COMPLÈTE : une exécution en cours de publication n'a que
+    # quelques échéances. On garde la première qui couvre au moins MIN_HOURS, sinon la plus longue.
+    best = None
+    for cov in list(reversed(ids))[:4]:
         desc = get(f"{WCS}/DescribeCoverage?service=WCS&version=2.0.1&coverageid={cov}").decode("utf-8", "replace")
         b = re.search(r"<gml:beginPosition[^>]*>\s*([^<\s]+)", desc)
         e = re.search(r"<gml:endPosition[^>]*>\s*([^<\s]+)", desc)
-        if b and e:
-            begin, end = b.group(1), e.group(1)
-            break
         time.sleep(PAUSE_S)
-    else:
+        if not (b and e):
+            continue
+        t0 = datetime.fromisoformat(b.group(1).replace("Z", "+00:00"))
+        t1 = datetime.fromisoformat(e.group(1).replace("Z", "+00:00"))
+        hours = (t1 - t0).total_seconds() / 3600
+        if best is None or hours > best[3]:
+            best = (cov, t0, t1, hours)
+        if hours >= MIN_HOURS:
+            best = (cov, t0, t1, hours)
+            break
+    if best is None:
         raise RuntimeError("Aucune exécution AROME exploitable dans GetCapabilities.")
-    t0 = datetime.fromisoformat(begin.replace("Z", "+00:00"))
-    t1 = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    cov, t0, t1, _ = best
     steps = [t0.replace(minute=0)]
     while steps[-1] < t1:
         steps.append(datetime.fromtimestamp(steps[-1].timestamp() + 3600, timezone.utc))
