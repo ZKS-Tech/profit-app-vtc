@@ -21,7 +21,7 @@ Fichier : `.github/workflows/donnees-carte.yml`. Lancement manuel : onglet **Act
    - `SUPABASE_SERVICE_ROLE_KEY` : clé secrète (`sb_secret_…`) ou ancienne clé `service_role`
    - `METEOFRANCE_API_KEY` : clé « API Key » du portail Météo-France
 3. **App** : `apps/mobile/.env` (voir `.env.example`) :
-   `EXPO_PUBLIC_DATA_URL=https://<projet>.supabase.co/storage/v1/object/public/donnees/carte`
+   `EXPO_PUBLIC_DATA_URL=…` (facultatif : l'adresse du projet « vtc profit » est déjà dans `src/data/live.tsx`)
    Cette adresse n'est pas secrète. Aucune clé n'est intégrée à l'app.
 
 Sans secrets Supabase, les données produites restent disponibles 3 jours comme artefact de l'exécution.

@@ -6,7 +6,9 @@ import type { HubArrivals, TisseoAlert, WeatherHour } from '../domain/zoneScore'
 import { hubArrivals as bundledHubs, tisseo as bundledTisseo, weather as bundledWeather } from './zones';
 
 /** Adresse publique des fichiers, ex. https://<projet>.supabase.co/storage/v1/object/public/donnees/carte */
-const DATA_URL = process.env.EXPO_PUBLIC_DATA_URL?.replace(/\/$/, '');
+// Adresse publique (non secrète) du projet Supabase « vtc profit » ; surchargeable par EXPO_PUBLIC_DATA_URL.
+const DEFAULT_DATA_URL = 'https://haloqryrplslzyhttxjg.supabase.co/storage/v1/object/public/donnees/carte';
+const DATA_URL = (process.env.EXPO_PUBLIC_DATA_URL || DEFAULT_DATA_URL).replace(/\/$/, '');
 const REFRESH_MS = 10 * 60_000;
 const HUB_FILES = [
   { hubId: 'matabiau', prefix: 'matabiau' },
