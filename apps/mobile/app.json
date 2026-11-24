@@ -2,7 +2,7 @@
   "expo": {
     "name": "VTC Profit AI",
     "slug": "vtc-profit-ai",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -16,7 +16,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.zkstech.vtcprofitai",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -31,6 +33,15 @@
       ]
     ],
     "scheme": "vtcprofitai",
-    "backgroundColor": "#0A111F"
+    "backgroundColor": "#0A111F",
+    "extra": {
+      "router": {
+        "asyncRoutes": false
+      },
+      "eas": {
+        "projectId": "11aee2b9-c8d5-4a21-8660-d285294e93ef"
+      }
+    },
+    "owner": "evanlgz"
   }
 }
