@@ -2,7 +2,7 @@
   "expo": {
     "name": "VTC Profit AI",
     "slug": "vtc-profit-ai",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -18,7 +18,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.zkstech.vtcprofitai",
-      "versionCode": 2
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -38,6 +38,13 @@
           "imageWidth": 180,
           "resizeMode": "contain",
           "backgroundColor": "#0A111F"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "VTC Profit AI utilise votre position, uniquement quand l’app est ouverte, pour estimer le temps de trajet vers chaque quartier. Elle n’est ni enregistrée ni envoyée.",
+          "isAndroidBackgroundLocationEnabled": false
         }
       ]
     ],

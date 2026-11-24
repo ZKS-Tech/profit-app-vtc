@@ -13,6 +13,8 @@ import { aeroportCarsDays, gareRoutiereDays, matabiauDays } from '../arrivals';
 export const zones = zonesFile.zones as Zone[];
 export const hubs = zonesFile.hubs as Hub[];
 export const zonesSource = zonesFile.source;
+export const projection = zonesFile.projection;
+export const kmPerUnit = zonesFile.kmPerUnit;
 
 export const tisseo = {
   fetchedAt: tisseoFile.fetchedAt,

@@ -1,0 +1,68 @@
+// Classement des quartiers selon le choix du chauffeur : toute la ville, hors centre, ou près de lui.
+//
+// « Près de moi » : la note est multipliée par la part de l'heure réellement utile une fois sur place.
+// Toutes les valeurs ci-dessous sont des hypothèses v0, à calibrer avec le GPS et l'historique.
+import type { Zone, ZoneScore } from './zoneScore';
+
+export type RankMode = 'ville' | 'hors-centre' | 'pres';
+
+/** Rayon de l'hypercentre autour du Capitole (≈ intérieur des boulevards + Saint-Cyprien). */
+export const CENTRE_RADIUS_KM = 1.45;
+/** Détour routier moyen par rapport à la ligne droite. */
+const ROAD_FACTOR = 1.35;
+/** Vitesse moyenne en ville, hors hypercentre. */
+const SPEED_KMH = 25;
+/** Temps perdu en plus pour entrer dans l'hypercentre (circulation, stationnement). */
+const CENTRE_EXTRA_MIN = 5;
+const HORIZON_MIN = 60;
+
+export type Projection = { kx: number; ox: number; oy: number; span: number };
+export type Point = { x: number; y: number };
+
+/** Position GPS → coordonnées de la carte (repère 0–1000). */
+export function project(lat: number, lon: number, p: Projection, size = 1000): Point {
+  return { x: ((lon * p.kx - p.ox) / p.span) * size, y: ((p.oy - lat) / p.span) * size };
+}
+
+export function centreIds(zones: Zone[], kmPerUnit: number): Set<string> {
+  const cap = zones.find((z) => z.name === 'Capitole');
+  if (!cap) return new Set();
+  return new Set(
+    zones.filter((z) => Math.hypot(z.cx - cap.cx, z.cy - cap.cy) * kmPerUnit <= CENTRE_RADIUS_KM).map((z) => z.id),
+  );
+}
+
+/** Temps d'accès estimé (minutes) depuis une position jusqu'au centre d'un quartier. */
+export function accessMinutes(from: Point, z: Zone, kmPerUnit: number, centre: Set<string>) {
+  const km = Math.hypot(z.cx - from.x, z.cy - from.y) * kmPerUnit * ROAD_FACTOR;
+  return Math.round((km / SPEED_KMH) * 60 + (centre.has(z.id) ? CENTRE_EXTRA_MIN : 0));
+}
+
+export type Ranked = ZoneScore & {
+  /** Note utilisée pour le classement (= note, ou note ajustée au trajet). */
+  rankScore: number;
+  accessMin?: number;
+  km?: number;
+  excluded: boolean;
+};
+
+export function rankZones(
+  scores: ZoneScore[],
+  zones: Zone[],
+  opts: { mode: RankMode; kmPerUnit: number; centre: Set<string>; from?: Point | null },
+): Ranked[] {
+  const byId = new Map(zones.map((z) => [z.id, z]));
+  return scores
+    .map((s) => {
+      const z = byId.get(s.zoneId)!;
+      const excluded = opts.mode === 'hors-centre' && opts.centre.has(s.zoneId);
+      if (opts.mode === 'pres' && opts.from) {
+        const accessMin = accessMinutes(opts.from, z, opts.kmPerUnit, opts.centre);
+        const useful = Math.max(0, HORIZON_MIN - accessMin) / HORIZON_MIN;
+        const km = Math.round(Math.hypot(z.cx - opts.from.x, z.cy - opts.from.y) * opts.kmPerUnit * ROAD_FACTOR * 10) / 10;
+        return { ...s, rankScore: Math.round(s.score * useful), accessMin, km, excluded };
+      }
+      return { ...s, rankScore: s.score, excluded };
+    })
+    .sort((a, b) => Number(a.excluded) - Number(b.excluded) || b.rankScore - a.rankScore);
+}

@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
-import { ChevronLeft, ChevronRight, CloudRain, PartyPopper, Plane, Sun } from 'lucide-react-native';
-import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
-import { hubs, zones, zonesSource } from '../../data/zones';
+import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun } from 'lucide-react-native';
+import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
+import { hubs, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
+import { centreIds, project, rankZones, type RankMode } from '../../domain/ranking';
+import { useDriverPosition } from '../../hooks/useDriverPosition';
 import { dayLabel, useLiveData } from '../../data/live';
-import { hubInflow, rainFor, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS, type ZoneScore } from '../../domain/zoneScore';
+import { hubInflow, rainFor, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS } from '../../domain/zoneScore';
 import { colors, font, radius, spacing } from '../../theme';
 
 const STEP = 30;
@@ -13,6 +15,7 @@ const hhmm = (iso?: string) =>
   iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
 const shortDate = (iso: string) =>
   new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const CENTRE = centreIds(zones, kmPerUnit);
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`;
 
 export default function MapHome() {
@@ -29,6 +32,9 @@ export default function MapHome() {
     Math.min(23 * 60 + 30, Math.max(5 * 60, Math.floor((now.getHours() * 60 + now.getMinutes()) / STEP) * STEP)),
   );
   const [selected, setSelected] = useState<string | null>(null);
+  const [mode, setMode] = useState<RankMode>('ville');
+  const pos = useDriverPosition(mode === 'pres');
+  const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
   const date =
     pickedDate && live.days.includes(pickedDate)
       ? pickedDate
@@ -51,14 +57,21 @@ export default function MapHome() {
       }),
     [date, minutes, hubArrivals, tisseo, weather],
   );
-  const byId = useMemo(() => Object.fromEntries(scores.map((s) => [s.zoneId, s])), [scores]);
-  const top = scores.slice(0, 5);
+  const ranked = useMemo(
+    () => rankZones(scores, zones, { mode, kmPerUnit, centre: CENTRE, from }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scores, mode, from?.x, from?.y],
+  );
+  const byId = useMemo(() => Object.fromEntries(ranked.map((s) => [s.zoneId, s])), [ranked]);
+  const eligible = ranked.filter((s) => !s.excluded);
+  const top = eligible.slice(0, 5);
   // Couleurs relatives : le quartier le plus favorable du moment prend la teinte la plus forte.
-  const maxScore = Math.max(1, scores[0].score);
+  const maxScore = Math.max(1, eligible[0].rankScore);
   const rel = (score: number) => scoreColor((score / maxScore) * 99);
-  const current: ZoneScore = byId[selected ?? top[0].zoneId];
+  const current = byId[selected && !byId[selected].excluded ? selected : top[0].zoneId];
   const currentZone = zones.find((z) => z.id === current.zoneId)!;
-  const rank = scores.findIndex((s) => s.zoneId === current.zoneId) + 1;
+  const rank = eligible.findIndex((s) => s.zoneId === current.zoneId) + 1;
+  const adjusted = mode === 'pres' && current.accessMin !== undefined;
 
   const rain = rainFor(weather.hourly, new Date(`${date}T${fmt(minutes).replace('h', ':')}:00+01:00`));
   const airport = hubs.find((h) => h.id === 'aeroport')!;
@@ -127,6 +140,39 @@ export default function MapHome() {
         </Pressable>
       </Card>
 
+      <Segmented<RankMode>
+        label="Quartiers proposés"
+        value={mode}
+        onChange={(m) => {
+          setMode(m);
+          setSelected(null);
+        }}
+        options={[
+          { value: 'ville', label: 'Toute la ville' },
+          { value: 'hors-centre', label: 'Hors centre' },
+          { value: 'pres', label: 'Près de moi' },
+        ]}
+      />
+      {mode === 'hors-centre' && (
+        <Text style={[font.tiny, { marginTop: -spacing.xs }]}>
+          Hypercentre exclu ({CENTRE.size} quartiers à moins de 1,45 km du Capitole), grisé sur la carte.
+        </Text>
+      )}
+      {mode === 'pres' && (
+        <Row style={{ marginTop: -spacing.xs, gap: 6 }}>
+          <Navigation size={13} color={pos.status === 'ok' ? colors.success : colors.textMuted} />
+          <Text style={[font.tiny, { flex: 1 }]}>
+            {pos.status === 'ok'
+              ? 'Note ajustée au temps de trajet depuis votre position (non enregistrée).'
+              : pos.status === 'pending'
+                ? 'Recherche de votre position…'
+                : pos.status === 'refused'
+                  ? 'Position refusée : autorisez la localisation pour ce mode. Classement de toute la ville en attendant.'
+                  : 'Position indisponible pour le moment. Classement de toute la ville en attendant.'}
+          </Text>
+        </Row>
+      )}
+
       <View style={styles.map}>
         <Svg width="100%" height="100%" viewBox="40 60 920 880">
           <G>
@@ -137,10 +183,10 @@ export default function MapHome() {
                 <Path
                   key={z.id}
                   d={z.path}
-                  fill={rel(s.score)}
+                  fill={s.excluded ? '#141C2B' : rel(s.rankScore)}
                   stroke={isSel ? '#FFFFFF' : '#0A111F'}
                   strokeWidth={isSel ? 4 : 1.5}
-                  onPress={() => setSelected(z.id)}
+                  onPress={() => !s.excluded && setSelected(z.id)}
                 />
               );
             })}
@@ -169,6 +215,12 @@ export default function MapHome() {
               </G>
             );
           })}
+          {from && (
+            <G>
+              <Circle cx={from.x} cy={from.y} r={16} fill={colors.primary} opacity={0.25} />
+              <Circle cx={from.x} cy={from.y} r={8} fill={colors.primary} stroke="#fff" strokeWidth={3} />
+            </G>
+          )}
           {hubs
             .filter((h) => h.id === 'matabiau')
             .map((h) => (
@@ -194,10 +246,20 @@ export default function MapHome() {
             </Text>
             <Text style={font.h2}>{currentZone.name}</Text>
           </View>
-          <View style={[styles.scoreBadge, { backgroundColor: rel(current.score) }]}>
-            <Text style={styles.scoreText}>{current.score}</Text>
+          <View style={[styles.scoreBadge, { backgroundColor: rel(current.rankScore) }]}>
+            <Text style={styles.scoreText}>{current.rankScore}</Text>
           </View>
         </Row>
+        {adjusted && (
+          <View style={styles.access}>
+            <Navigation size={16} color={colors.primary} />
+            <Text style={[font.small, { color: colors.text, flex: 1 }]}>
+              Trajet estimé ≈ {current.accessMin} min ({current.km?.toLocaleString('fr-FR')} km)
+              {CENTRE.has(current.zoneId) ? ', dont 5 min pour entrer dans l’hypercentre' : ''}. Note du quartier{' '}
+              {current.score} × {Math.max(0, 60 - (current.accessMin ?? 0))}/60 min utiles = {current.rankScore}.
+            </Text>
+          </View>
+        )}
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
           {current.factors.map((f) => (
             <View key={f.key}>
@@ -218,7 +280,9 @@ export default function MapHome() {
         </SourceNote>
       </Card>
 
-      <SectionTitle>Top 5 des quartiers</SectionTitle>
+      <SectionTitle>
+        {mode === 'hors-centre' ? 'Top 5 hors centre' : mode === 'pres' && from ? 'Top 5 près de vous' : 'Top 5 des quartiers'}
+      </SectionTitle>
       <Card style={{ paddingVertical: spacing.xs }}>
         {top.map((s, i) => {
           const z = zones.find((x) => x.id === s.zoneId)!;
@@ -234,11 +298,12 @@ export default function MapHome() {
               <View style={{ flex: 1 }}>
                 <Text style={font.h3}>{z.name}</Text>
                 <Text style={font.tiny} numberOfLines={1}>
+                  {s.accessMin !== undefined ? `≈ ${s.accessMin} min · ` : ''}
                   {main.label}
                 </Text>
               </View>
-              <View style={[styles.miniBadge, { backgroundColor: rel(s.score) }]}>
-                <Text style={styles.miniText}>{s.score}</Text>
+              <View style={[styles.miniBadge, { backgroundColor: rel(s.rankScore) }]}>
+                <Text style={styles.miniText}>{s.rankScore}</Text>
               </View>
             </Pressable>
           );
@@ -311,6 +376,15 @@ const styles = StyleSheet.create({
   },
   legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   legendBox: { width: 22, height: 10, borderRadius: 2 },
+  access: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+  },
   scoreBadge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   scoreText: { color: '#fff', fontSize: 20, fontWeight: '800' },
   track: { height: 6, backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, overflow: 'hidden', marginTop: 4 },

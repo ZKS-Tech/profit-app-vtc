@@ -139,7 +139,8 @@ export function scoreZones(params: {
         {
           key: 'density',
           label: 'Densité de population',
-          value: z.density / maxDensity,
+          // Racine carrée : la demande ne croît pas proportionnellement au nombre d'habitants (hypothèse).
+          value: Math.sqrt(z.density / maxDensity),
           detail: `${z.density.toLocaleString('fr-FR')} hab./km² (INSEE 2019)`,
         },
         {
