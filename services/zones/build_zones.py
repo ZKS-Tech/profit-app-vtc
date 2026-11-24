@@ -70,6 +70,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--geojson", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--communes", help="GeoJSON des communes (geo.api.gouv.fr) à ajouter autour de Toulouse")
+    p.add_argument("--radius-km", type=float, default=12.5)
+    p.add_argument("--min-pop", type=int, default=2500)
     a = p.parse_args()
     feats = json.load(open(a.geojson, encoding="utf-8"))["features"]
 
@@ -79,6 +82,24 @@ def main():
         polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
         outer = max((poly[0] for poly in polys), key=len)  # contour principal
         rings.append((f["properties"], [tuple(pt[:2]) for pt in outer]))
+
+    for props, _ in rings:
+        props["_kind"] = "quartier"
+    if a.communes:
+        cap_lon, cap_lat = 1.4442, 43.6045  # Capitole
+        for f in json.load(open(a.communes, encoding="utf-8"))["features"]:
+            pr = f["properties"]
+            if pr["code"] == "31555" or (pr.get("population") or 0) < a.min_pop:
+                continue  # Toulouse est déjà découpée en quartiers
+            g = f["geometry"]
+            outer = g["coordinates"][0] if g["type"] == "Polygon" else max((pl[0] for pl in g["coordinates"]), key=len)
+            ring = [tuple(pt[:2]) for pt in outer]
+            clon = sum(x for x, _ in ring) / len(ring)
+            clat = sum(y for _, y in ring) / len(ring)
+            if math.hypot((clon - cap_lon) * 80.6, (clat - cap_lat) * 111.2) > a.radius_km:
+                continue
+            rings.append(({"grd_quart": "c" + pr["code"], "lib_grd_quart": pr["nom"], "p19_pop": pr["population"],
+                           "geo_point_2d": json.dumps({"lon": clon, "lat": clat}), "_kind": "commune"}, ring))
 
     lons = [x for _, r in rings for x, _ in r] + [h["lon"] for h in HUBS]
     lats = [y for _, r in rings for _, y in r] + [h["lat"] for h in HUBS]
@@ -98,7 +119,8 @@ def main():
         d = "M" + " L".join(f"{x} {y}" for x, y in pts) + " Z"
         cx = sum(x for x, _ in pts) / len(pts)
         cy = sum(y for _, y in pts) / len(pts)
-        clon, clat = json.loads(props["geo_point_2d"].replace("'", '"')).values() if isinstance(props.get("geo_point_2d"), str) else (None, None)
+        gp = json.loads(props["geo_point_2d"].replace("'", '"')) if isinstance(props.get("geo_point_2d"), str) else {}
+        clon, clat = gp.get("lon"), gp.get("lat")
         area = ring_area_km2(ring)
         pop = float(props.get("p19_pop") or 0)
         zones.append(
@@ -113,6 +135,7 @@ def main():
                 "areaKm2": round(area, 2),
                 "population2019": round(pop),
                 "density": round(pop / area) if area else 0,
+                "kind": props["_kind"],
                 "_ring": ring,
             }
         )
@@ -127,7 +150,7 @@ def main():
 
     out = {
         "source": {
-            "name": "Recensement population 2019 - Grands quartiers (Toulouse Métropole)",
+            "name": "Grands quartiers INSEE 2019 (Toulouse Métropole) et communes voisines (geo.api.gouv.fr)",
             "url": "https://data.toulouse-metropole.fr/explore/dataset/recensement-population-2019-grands-quartiers-population/",
             "licence": "Licence Ouverte v2.0",
         },

@@ -42,12 +42,20 @@ def point_in_ring(lon, lat, ring):
     return inside
 
 
-def load_quartiers(path):
+def load_quartiers(path, communes_path=None):
+    """Zones : grands quartiers de Toulouse (id INSEE) + communes voisines (id « c » + code INSEE)."""
     out = []
-    for f in json.load(open(path, encoding="utf-8"))["features"]:
-        g = f["geometry"]
-        polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
-        out.append((f["properties"]["grd_quart"], [[tuple(p[:2]) for p in poly[0]] for poly in polys]))
+    sources = [(path, lambda pr: pr["grd_quart"])]
+    if communes_path:
+        sources.append((communes_path, lambda pr: None if pr["code"] == "31555" else "c" + pr["code"]))
+    for src, key in sources:
+        for f in json.load(open(src, encoding="utf-8"))["features"]:
+            zid = key(f["properties"])
+            if not zid:
+                continue
+            g = f["geometry"]
+            polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+            out.append((zid, [[tuple(p[:2]) for p in poly[0]] for poly in polys]))
     return out
 
 
@@ -68,6 +76,7 @@ def main():
     p.add_argument("--rt", required=True)
     p.add_argument("--quartiers", required=True)
     p.add_argument("--out", required=True)
+    p.add_argument("--communes", help="GeoJSON des communes voisines (geo.api.gouv.fr)")
     a = p.parse_args()
 
     routes = {r["route_id"]: r for r in read_csv(os.path.join(a.gtfs, "routes.txt"))}
@@ -78,7 +87,7 @@ def main():
         return "lineo" if m == "bus" and r.get("route_short_name", "").startswith("L") else m
 
     # Quartiers desservis par chaque ligne structurante (métro, tram, Téléo, Linéo).
-    quartiers = load_quartiers(a.quartiers)
+    quartiers = load_quartiers(a.quartiers, a.communes)
     stops = {s["stop_id"]: s for s in read_csv(os.path.join(a.gtfs, "stops.txt"))}
     trip_route = {t["trip_id"]: t["route_id"] for t in read_csv(os.path.join(a.gtfs, "trips.txt"))}
     strong = {rid for rid in routes if mode(rid) != "bus"}

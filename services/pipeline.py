@@ -38,6 +38,8 @@ SOURCES = {
     "tisseo_rt": "https://api.tisseo.fr/opendata/gtfsrt/GtfsRt.pb",
     "quartiers": "https://data.toulouse-metropole.fr/api/explore/v2.1/catalog/datasets/"
     "recensement-population-2019-grands-quartiers-population/exports/geojson",
+    "communes": "https://geo.api.gouv.fr/departements/31/communes?fields=nom,code,population,surface"
+    "&format=geojson&geometry=contour",
 }
 STOPS = {
     "flix_routiere": "dcc0e74b-9603-11e6-9066-549f350fcb0c",
@@ -95,6 +97,13 @@ def quartiers(cache: str) -> str:
     return path
 
 
+def communes(cache: str) -> str:
+    path = os.path.join(cache, "communes31.geojson")
+    if not fresh(path, 24 * 30):
+        download(SOURCES["communes"], path)
+    return path
+
+
 def job_transport(cache: str, out: str, days: list[str]) -> dict:
     dates = ",".join(days)
     sncf, flix, blabla = gtfs(cache, "sncf"), gtfs(cache, "flix"), gtfs(cache, "blabla")
@@ -115,7 +124,8 @@ def job_tisseo(cache: str, out: str) -> dict:
     static = gtfs(cache, "tisseo_gtfs")
     rt = download(SOURCES["tisseo_rt"], os.path.join(cache, "tisseo_rt.pb"))
     run(f"{HERE}/tisseo/build_disruptions.py", "--gtfs", static, "--rt", rt,
-        "--quartiers", quartiers(cache), "--out", os.path.join(out, "tisseo-perturbations.json"))
+        "--quartiers", quartiers(cache), "--communes", communes(cache),
+        "--out", os.path.join(out, "tisseo-perturbations.json"))
     return {}
 
 
@@ -128,7 +138,8 @@ def job_meteo(cache: str, out: str) -> dict:
 
 
 def job_zones(cache: str, out: str) -> dict:
-    run(f"{HERE}/zones/build_zones.py", "--geojson", quartiers(cache), "--out", os.path.join(out, "toulouse-zones.json"))
+    run(f"{HERE}/zones/build_zones.py", "--geojson", quartiers(cache), "--communes", communes(cache),
+        "--out", os.path.join(out, "toulouse-zones.json"))
     return {}
 
 

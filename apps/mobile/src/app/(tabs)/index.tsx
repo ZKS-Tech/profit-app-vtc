@@ -54,6 +54,7 @@ export default function MapHome() {
         alerts: tisseo.alerts,
         alertsFetchedAt: tisseo.fetchedAt,
         weather: weather.hourly,
+        kmPerUnit,
       }),
     [date, minutes, hubArrivals, tisseo, weather],
   );
@@ -174,7 +175,7 @@ export default function MapHome() {
       )}
 
       <View style={styles.map}>
-        <Svg width="100%" height="100%" viewBox="40 60 920 880">
+        <Svg width="100%" height="100%" viewBox="0 0 1000 1000">
           <G>
             {zones.map((z) => {
               const s = byId[z.id];
@@ -185,7 +186,7 @@ export default function MapHome() {
                   d={z.path}
                   fill={s.excluded ? '#141C2B' : rel(s.rankScore)}
                   stroke={isSel ? '#FFFFFF' : '#0A111F'}
-                  strokeWidth={isSel ? 4 : 1.5}
+                  strokeWidth={isSel ? 3 : 1}
                   onPress={() => !s.excluded && setSelected(z.id)}
                 />
               );
@@ -195,21 +196,20 @@ export default function MapHome() {
           <Circle
             cx={airport.x}
             cy={airport.y}
-            r={26}
-            fill={rel(Math.min(100, Math.round((airportIn.seats / 1500) * 100)))}
+            r={11}
+            fill="#0A111F"
             stroke="#F5C451"
             strokeWidth={2}
-            strokeDasharray="6 4"
           />
-          <SvgText x={airport.x} y={airport.y + 46} fill={colors.textMuted} fontSize={22} textAnchor="middle">
+          <SvgText x={airport.x} y={airport.y + 30} fill="#F5C451" fontSize={17} textAnchor="middle">
             Aéroport
           </SvgText>
           {top.slice(0, 3).map((s, i) => {
             const z = zones.find((x) => x.id === s.zoneId)!;
             return (
               <G key={s.zoneId}>
-                <Circle cx={z.cx} cy={z.cy} r={17} fill="#0A111F" stroke="#7BD88F" strokeWidth={2} />
-                <SvgText x={z.cx} y={z.cy + 7} fill="#7BD88F" fontSize={20} fontWeight="700" textAnchor="middle">
+                <Circle cx={z.cx} cy={z.cy} r={14} fill="#0A111F" stroke="#7BD88F" strokeWidth={2} />
+                <SvgText x={z.cx} y={z.cy + 6} fill="#7BD88F" fontSize={16} fontWeight="700" textAnchor="middle">
                   {i + 1}
                 </SvgText>
               </G>
@@ -224,7 +224,7 @@ export default function MapHome() {
           {hubs
             .filter((h) => h.id === 'matabiau')
             .map((h) => (
-              <Circle key={h.id} cx={h.x} cy={h.y} r={7} fill="#fff" stroke="#0A111F" strokeWidth={2} />
+              <Circle key={h.id} cx={h.x} cy={h.y} r={5} fill="#fff" stroke="#0A111F" strokeWidth={2} />
             ))}
         </Svg>
       </View>
@@ -236,6 +236,11 @@ export default function MapHome() {
         ))}
         <Text style={font.tiny}>plus favorable (à cette heure)</Text>
       </View>
+
+      <Text style={[font.tiny, { textAlign: 'center', marginTop: -spacing.xs }]}>
+        Toulouse (60 quartiers) et {zones.filter((z) => z.kind === 'commune').length} communes voisines · touchez une zone
+        pour le détail
+      </Text>
 
       <Card accent={colors.primary}>
         <Row style={{ justifyContent: 'space-between' }}>
@@ -366,7 +371,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   map: {
-    aspectRatio: 920 / 880,
+    aspectRatio: 1,
     width: '100%',
     borderRadius: radius.lg,
     overflow: 'hidden',

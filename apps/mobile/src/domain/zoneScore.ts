@@ -15,6 +15,7 @@ export type Zone = {
   areaKm2: number;
   population2019: number;
   density: number;
+  kind?: 'quartier' | 'commune';
 };
 
 export type Hub = { id: string; name: string; x: number; y: number; zoneId: string | null };
@@ -65,8 +66,8 @@ export function rainFor(hourly: WeatherHour[], at: Date) {
 
 /** Places arrivant en une heure qui donnent le score transport maximal (hypothèse). */
 const TRANSPORT_REF = 1500;
-/** Rayon d'influence d'un pôle sur les quartiers voisins, en unités de carte (≈ 1,3 km). */
-const HUB_RADIUS = 60;
+/** Rayon d'influence d'un pôle sur les quartiers voisins (hypothèse). */
+const HUB_RADIUS_KM = 1.0;
 const EXIT = { min: 5, max: 15 };
 const HORIZON_MIN = 60;
 
@@ -100,6 +101,8 @@ export function scoreZones(params: {
   alerts: TisseoAlert[];
   alertsFetchedAt: string;
   weather?: WeatherHour[];
+  /** Échelle de la carte (km par unité), pour le rayon d'influence des pôles. */
+  kmPerUnit: number;
 }): ZoneScore[] {
   const { zones, hubs, arrivals, date, minutes, alerts } = params;
   const at = new Date(`${date}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:00+01:00`);
@@ -120,7 +123,7 @@ export function scoreZones(params: {
       for (const f of inflows) {
         if (!f.seats) continue;
         const inZone = f.hub.zoneId === z.id;
-        const close = Math.hypot(f.hub.x - z.cx, f.hub.y - z.cy) < HUB_RADIUS;
+        const close = Math.hypot(f.hub.x - z.cx, f.hub.y - z.cy) * params.kmPerUnit < HUB_RADIUS_KM;
         if (inZone || close) {
           seats += f.seats * (inZone ? 1 : 0.5);
           near.push(`${f.hub.name} : ${f.items.length} arrivée${f.items.length > 1 ? 's' : ''} (≈ ${f.seats} places)`);
