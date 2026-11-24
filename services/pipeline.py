@@ -134,7 +134,11 @@ def job_zones(cache: str, out: str) -> dict:
 
 def write_manifest(out: str, jobs: list[str], extra: dict) -> None:
     path = os.path.join(out, "manifest.json")
-    manifest = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {"updated": {}}
+    try:
+        manifest = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):  # absent ou vide (premier lancement)
+        manifest = {}
+    manifest.setdefault("updated", {})
     now = datetime.now(PARIS).isoformat(timespec="seconds")
     for j in jobs:
         manifest["updated"][j] = now
