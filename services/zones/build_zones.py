@@ -132,6 +132,9 @@ def main():
             "licence": "Licence Ouverte v2.0",
         },
         "viewBox": SIZE,
+        # Projection carte : x = (lon·kx − ox) / span · SIZE ; y = (oy − lat) / span · SIZE
+        "projection": {"kx": kx, "ox": ox, "oy": oy, "span": span},
+        "kmPerUnit": round(span * 111.2 / SIZE, 5),
         "zones": sorted(zones, key=lambda z: z["name"]),
         "hubs": hubs,
     }
