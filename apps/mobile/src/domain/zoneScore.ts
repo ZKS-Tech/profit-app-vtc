@@ -40,8 +40,28 @@ export const WEIGHTS: Record<FactorKey, number> = {
   density: 0.3,
   disruption: 0.15,
   events: 0.1,
-  weather: 0, // multiplicateur global quand la météo sera connectée
+  weather: 0.1, // même valeur pour tous les quartiers : la pluie fait monter la demande partout
 };
+
+/** Pluie (mm/h, moyenne sur Toulouse) qui donne le score météo maximal (hypothèse). */
+const RAIN_REF_MM = 2;
+
+export type WeatherHour = { time: string; rainMeanMm: number; rainMaxMm: number };
+
+/** Pluie prévue sur [t, t + 60 min] ; null si la prévision ne couvre pas ce créneau. */
+export function rainFor(hourly: WeatherHour[], at: Date) {
+  const end = at.getTime() + HORIZON_MIN * 60_000;
+  // Chaque valeur AROME est un cumul sur l'heure qui se termine à `time`.
+  const hits = hourly.filter((h) => {
+    const t = new Date(h.time).getTime();
+    return t > at.getTime() && t - 3600_000 < end;
+  });
+  if (!hits.length) return null;
+  return {
+    mean: Math.max(...hits.map((h) => h.rainMeanMm)),
+    max: Math.max(...hits.map((h) => h.rainMaxMm)),
+  };
+}
 
 /** Places arrivant en une heure qui donnent le score transport maximal (hypothèse). */
 const TRANSPORT_REF = 1500;
@@ -79,6 +99,7 @@ export function scoreZones(params: {
   minutes: number; // heure de la journée
   alerts: TisseoAlert[];
   alertsFetchedAt: string;
+  weather?: WeatherHour[];
 }): ZoneScore[] {
   const { zones, hubs, arrivals, date, minutes, alerts } = params;
   const at = new Date(`${date}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:00+01:00`);
@@ -89,6 +110,7 @@ export function scoreZones(params: {
     return { hub: h, ...hubInflow(days[date], minutes) };
   });
   const active = alerts.filter((a) => a.impact >= 0.3 && isActive(a, at, new Date(params.alertsFetchedAt)));
+  const rain = params.weather ? rainFor(params.weather, at) : null;
 
   return zones
     .map((z) => {
@@ -129,6 +151,17 @@ export function scoreZones(params: {
             : 'Aucune perturbation métro, tram ou Linéo',
         },
       ];
+      if (rain) {
+        factors.push({
+          key: 'weather',
+          label: 'Météo',
+          value: Math.min(1, rain.mean / RAIN_REF_MM),
+          detail:
+            rain.mean < 0.2
+              ? 'Pas de pluie prévue (Météo-France AROME)'
+              : `Pluie prévue : ${rain.mean.toLocaleString('fr-FR')} mm/h en moyenne, jusqu’à ${rain.max.toLocaleString('fr-FR')} mm/h (Météo-France AROME)`,
+        });
+      }
       const totalW = factors.reduce((s, f) => s + WEIGHTS[f.key], 0);
       const score = Math.round((100 * factors.reduce((s, f) => s + WEIGHTS[f.key] * f.value, 0)) / totalW);
       return { zoneId: z.id, score, factors };

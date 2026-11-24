@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
-import { ChevronLeft, ChevronRight, CloudSun, PartyPopper, Plane } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, CloudRain, PartyPopper, Plane, Sun } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
-import { hubArrivals, hubs, mapDays, tisseo, zones, zonesSource } from '../../data/zones';
-import { hubInflow, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS, type ZoneScore } from '../../domain/zoneScore';
+import { hubArrivals, hubs, mapDays, tisseo, weather, zones, zonesSource } from '../../data/zones';
+import { hubInflow, rainFor, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS, type ZoneScore } from '../../domain/zoneScore';
 import { colors, font, radius, spacing } from '../../theme';
 
 const STEP = 30;
@@ -26,6 +26,7 @@ export default function MapHome() {
         minutes,
         alerts: tisseo.alerts,
         alertsFetchedAt: tisseo.fetchedAt,
+        weather: weather.hourly,
       }),
     [date, minutes],
   );
@@ -38,6 +39,7 @@ export default function MapHome() {
   const currentZone = zones.find((z) => z.id === current.zoneId)!;
   const rank = scores.findIndex((s) => s.zoneId === current.zoneId) + 1;
 
+  const rain = rainFor(weather.hourly, new Date(`${date}T${fmt(minutes).replace('h', ':')}:00+01:00`));
   const airport = hubs.find((h) => h.id === 'aeroport')!;
   const airportIn = hubInflow(hubArrivals.find((h) => h.hubId === 'aeroport')?.days[date], minutes);
 
@@ -73,6 +75,20 @@ export default function MapHome() {
         <View style={{ alignItems: 'center' }}>
           <Text style={font.h2}>{fmt(minutes)}</Text>
           <Text style={font.tiny}>prévision pour l’heure qui suit</Text>
+          <Row style={{ gap: 4, marginTop: 2 }}>
+            {rain && rain.mean >= 0.2 ? (
+              <CloudRain size={14} color={colors.primary} />
+            ) : (
+              <Sun size={14} color={colors.textMuted} />
+            )}
+            <Text style={font.tiny}>
+              {!rain
+                ? 'Météo : prévision pas encore disponible'
+                : rain.mean >= 0.2
+                  ? `Pluie ${rain.mean.toLocaleString('fr-FR')} mm/h`
+                  : 'Pas de pluie prévue'}
+            </Text>
+          </Row>
         </View>
         <Pressable
           onPress={() => setMinutes((m) => Math.min(23 * 60 + 30, m + STEP))}
@@ -218,16 +234,14 @@ export default function MapHome() {
             Événements (matchs, concerts, salons) : aucune source ouverte à jour. Calendrier à constituer.
           </Text>
         </Row>
-        <Row>
-          <CloudSun size={16} color={colors.warning} />
-          <Text style={[font.small, { flex: 1 }]}>Météo : compte Météo-France (gratuit) à créer.</Text>
-        </Row>
       </Card>
 
       <SourceNote>
         Quartiers : {zonesSource.name}, {zonesSource.licence}. Trains : horaires SNCF ; cars : FlixBus et BlaBlaCar Bus
         (ODbL). Perturbations : Tisséo temps réel (ODbL), relevé du{' '}
-        {new Date(tisseo.fetchedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.
+        {new Date(tisseo.fetchedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. Météo :
+        Météo-France (Licence Ouverte), modèle AROME du{' '}
+        {new Date(weather.aromeRun).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.
       </SourceNote>
     </Screen>
   );
