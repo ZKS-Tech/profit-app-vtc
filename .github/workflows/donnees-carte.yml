@@ -1,0 +1,74 @@
+name: Mise à jour des données de la carte
+
+# Horaires en UTC (Paris = UTC+1 en hiver, UTC+2 en été).
+on:
+  schedule:
+    - cron: "*/30 4-22 * * *" # Tisséo : toutes les 30 min, ~5h–23h à Paris
+    - cron: "10 1-22/3 * * *" # Météo : toutes les 3 h (nouvelle exécution AROME)
+    - cron: "20 3 * * *" # Trains et cars : chaque nuit, pour les 7 prochains jours
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Tâches (transport,tisseo,meteo,zones)"
+        default: "transport,tisseo,meteo"
+
+concurrency:
+  group: donnees-carte
+  cancel-in-progress: false
+
+jobs:
+  maj:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      METEOFRANCE_API_KEY: ${{ secrets.METEOFRANCE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dépendances
+        run: pip install -r services/requirements.txt
+
+      - name: Choix des tâches
+        id: choix
+        run: |
+          case "${{ github.event.schedule }}" in
+            "*/30 4-22 * * *") echo "jobs=tisseo" >> "$GITHUB_OUTPUT" ;;
+            "10 1-22/3 * * *") echo "jobs=meteo" >> "$GITHUB_OUTPUT" ;;
+            "20 3 * * *") echo "jobs=transport" >> "$GITHUB_OUTPUT" ;;
+            *) echo "jobs=${{ github.event.inputs.jobs || 'transport,tisseo,meteo' }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Cache des fichiers sources (GTFS)
+        uses: actions/cache@v4
+        with:
+          path: services/.cache
+          key: sources-${{ steps.choix.outputs.jobs }}-${{ github.run_id }}
+          restore-keys: sources-${{ steps.choix.outputs.jobs }}-
+
+      - name: Manifeste précédent
+        run: |
+          mkdir -p build/data
+          if [ -n "$SUPABASE_URL" ]; then
+            curl -fsS "$SUPABASE_URL/storage/v1/object/public/donnees/carte/manifest.json" -o build/data/manifest.json || true
+          fi
+
+      - name: Traitements
+        run: python3 services/pipeline.py --jobs "${{ steps.choix.outputs.jobs }}" --out build/data
+
+      - name: Publication Supabase
+        if: always()
+        run: python3 services/publish_supabase.py build/data
+
+      - name: Copie de secours (artefact GitHub)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: donnees-carte-${{ steps.choix.outputs.jobs }}
+          path: build/data
+          retention-days: 3

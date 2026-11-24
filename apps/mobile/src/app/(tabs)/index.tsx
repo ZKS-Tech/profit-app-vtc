@@ -1,20 +1,41 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { ChevronLeft, ChevronRight, CloudRain, PartyPopper, Plane, Sun } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
-import { hubArrivals, hubs, mapDays, tisseo, weather, zones, zonesSource } from '../../data/zones';
+import { hubs, zones, zonesSource } from '../../data/zones';
+import { dayLabel, useLiveData } from '../../data/live';
 import { hubInflow, rainFor, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS, type ZoneScore } from '../../domain/zoneScore';
 import { colors, font, radius, spacing } from '../../theme';
 
 const STEP = 30;
+const hhmm = (iso?: string) =>
+  iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`;
 
 export default function MapHome() {
-  const [dayIdx, setDayIdx] = useState(0);
-  const [minutes, setMinutes] = useState(17 * 60);
+  const live = useLiveData();
+  const { hubArrivals, tisseo, weather } = live;
+  const firstMonth = Number(live.days[0].slice(5, 7));
+  const mapDays = live.days.map((d) => ({ date: d, label: dayLabel(d, firstMonth) }));
+
+  // Ouverture sur aujourd'hui et l'heure actuelle (arrondie à la demi-heure).
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
+  const [minutes, setMinutes] = useState(() =>
+    Math.min(23 * 60 + 30, Math.max(5 * 60, Math.floor((now.getHours() * 60 + now.getMinutes()) / STEP) * STEP)),
+  );
   const [selected, setSelected] = useState<string | null>(null);
-  const date = mapDays[dayIdx].date;
+  const date =
+    pickedDate && live.days.includes(pickedDate)
+      ? pickedDate
+      : live.days.includes(todayStr)
+        ? todayStr
+        : live.days[0];
+  const dayIdx = live.days.indexOf(date);
 
   const scores = useMemo(
     () =>
@@ -28,7 +49,7 @@ export default function MapHome() {
         alertsFetchedAt: tisseo.fetchedAt,
         weather: weather.hourly,
       }),
-    [date, minutes],
+    [date, minutes, hubArrivals, tisseo, weather],
   );
   const byId = useMemo(() => Object.fromEntries(scores.map((s) => [s.zoneId, s])), [scores]);
   const top = scores.slice(0, 5);
@@ -45,13 +66,18 @@ export default function MapHome() {
 
   return (
     <Screen title="Carte de Toulouse" subtitle="Où la demande devrait être la plus forte" realData>
-      <Row>
+      <Text style={[font.tiny, { marginTop: -spacing.sm }]}>
+        {live.origin === 'serveur'
+          ? `Mis à jour · Tisséo ${live.updated.tisseo ? hhmm(live.updated.tisseo) : `du ${shortDate(live.tisseo.fetchedAt)}`} · météo ${hhmm(live.updated.meteo)} · trains et cars ${hhmm(live.updated.transport)}`
+          : `Données intégrées à l’app (Tisséo du ${shortDate(live.tisseo.fetchedAt)}, météo du ${shortDate(live.weather.fetchedAt)})${live.checkedAt ? ' · serveur injoignable' : ''}`}
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
         {mapDays.map((d, i) => {
           const active = i === dayIdx;
           return (
             <Pressable
               key={d.date}
-              onPress={() => setDayIdx(i)}
+              onPress={() => setPickedDate(d.date)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               style={[styles.chip, active && styles.chipActive]}
@@ -60,7 +86,7 @@ export default function MapHome() {
             </Pressable>
           );
         })}
-      </Row>
+      </ScrollView>
 
       <Card style={styles.timeBar}>
         <Pressable
@@ -249,7 +275,7 @@ export default function MapHome() {
 
 const styles = StyleSheet.create({
   chip: {
-    flex: 1,
+    paddingHorizontal: 14,
     minHeight: 36,
     alignItems: 'center',
     justifyContent: 'center',

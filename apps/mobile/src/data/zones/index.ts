@@ -37,4 +37,3 @@ export const hubArrivals: HubArrivals[] = [
   { hubId: 'aeroport', days: byDate(aeroportCarsDays) },
 ];
 
-export const mapDays = matabiauDays.map((d) => ({ label: d.label, date: d.data.date }));

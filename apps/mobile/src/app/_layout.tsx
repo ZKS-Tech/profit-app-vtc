@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DemoProvider } from '../demo/DemoContext';
+import { LiveDataProvider } from '../data/live';
 import { colors } from '../theme';
 
 /** Sur grand écran web, l'aperçu s'affiche dans un cadre de téléphone. */
@@ -19,6 +20,7 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <LiveDataProvider>
       <DemoProvider>
         <StatusBar style="light" />
         <PhoneFrame>
@@ -33,6 +35,7 @@ export default function RootLayout() {
           </Stack>
         </PhoneFrame>
       </DemoProvider>
+      </LiveDataProvider>
     </SafeAreaProvider>
   );
 }

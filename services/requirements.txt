@@ -1,0 +1,2 @@
+-r tisseo/requirements.txt
+-r weather/requirements.txt
