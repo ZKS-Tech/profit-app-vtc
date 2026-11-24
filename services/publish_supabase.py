@@ -30,6 +30,9 @@ def main() -> int:
     if not url or not key:
         print("Supabase non configuré (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY) : publication ignorée.")
         return 0
+    if not os.path.isdir(folder):
+        print(f"Aucune donnée à publier ({folder} absent).")
+        return 1
     files = sorted(f for f in os.listdir(folder) if f.endswith(".json"))
     # manifest.json en dernier : l'app ne le voit qu'une fois tous les fichiers en place.
     files = [f for f in files if f != "manifest.json"] + (["manifest.json"] if "manifest.json" in files else [])

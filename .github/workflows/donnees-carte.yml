@@ -43,13 +43,15 @@ jobs:
             "20 3 * * *") echo "jobs=transport" >> "$GITHUB_OUTPUT" ;;
             *) echo "jobs=${{ github.event.inputs.jobs || 'transport,tisseo,meteo' }}" >> "$GITHUB_OUTPUT" ;;
           esac
+          # Version sans virgule pour les noms de cache et d'artefact.
+          grep '^jobs=' "$GITHUB_OUTPUT" | tail -1 | sed 's/^jobs=/slug=/; s/,/-/g' >> "$GITHUB_OUTPUT"
 
       - name: Cache des fichiers sources (GTFS)
         uses: actions/cache@v4
         with:
           path: services/.cache
-          key: sources-${{ steps.choix.outputs.jobs }}-${{ github.run_id }}
-          restore-keys: sources-${{ steps.choix.outputs.jobs }}-
+          key: sources-${{ steps.choix.outputs.slug }}-${{ github.run_id }}
+          restore-keys: sources-${{ steps.choix.outputs.slug }}-
 
       - name: Manifeste précédent
         run: |
@@ -69,6 +71,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: donnees-carte-${{ steps.choix.outputs.jobs }}
+          name: donnees-carte-${{ steps.choix.outputs.slug }}
           path: build/data
           retention-days: 3
