@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
-import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun } from 'lucide-react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
+import { ZoneMap } from '../../components/ZoneMap';
 import { hubs, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
 import { centreIds, project, rankZones, type RankMode } from '../../domain/ranking';
 import { useDriverPosition } from '../../hooks/useDriverPosition';
@@ -33,6 +34,7 @@ export default function MapHome() {
   );
   const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<RankMode>('ville');
+  const [full, setFull] = useState(false);
   const pos = useDriverPosition(mode === 'pres');
   const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
   const date =
@@ -76,6 +78,8 @@ export default function MapHome() {
 
   const rain = rainFor(weather.hourly, new Date(`${date}T${fmt(minutes).replace('h', ':')}:00+01:00`));
   const airport = hubs.find((h) => h.id === 'aeroport')!;
+  const station = hubs.find((h) => h.id === 'matabiau');
+  const fillOf = (id: string) => (byId[id].excluded ? '#141C2B' : rel(byId[id].rankScore));
   const airportIn = hubInflow(hubArrivals.find((h) => h.hubId === 'aeroport')?.days[date], minutes);
 
   return (
@@ -174,60 +178,71 @@ export default function MapHome() {
         </Row>
       )}
 
-      <View style={styles.map}>
-        <Svg width="100%" height="100%" viewBox="0 0 1000 1000">
-          <G>
-            {zones.map((z) => {
-              const s = byId[z.id];
-              const isSel = z.id === current.zoneId;
-              return (
-                <Path
-                  key={z.id}
-                  d={z.path}
-                  fill={s.excluded ? '#141C2B' : rel(s.rankScore)}
-                  stroke={isSel ? '#FFFFFF' : '#0A111F'}
-                  strokeWidth={isSel ? 3 : 1}
-                  onPress={() => !s.excluded && setSelected(z.id)}
-                />
-              );
-            })}
-          </G>
-          {/* Aéroport : hors commune de Toulouse */}
-          <Circle
-            cx={airport.x}
-            cy={airport.y}
-            r={11}
-            fill="#0A111F"
-            stroke="#F5C451"
-            strokeWidth={2}
+      <ZoneMap
+        zones={zones}
+        fillOf={fillOf}
+        excluded={(id) => byId[id].excluded}
+        selectedId={current.zoneId}
+        onSelect={setSelected}
+        topIds={top.map((s) => s.zoneId)}
+        airport={airport}
+        station={station}
+        user={from}
+        onExpand={() => setFull(true)}
+      />
+
+      <Modal visible={full} animationType="slide" onRequestClose={() => setFull(false)}>
+        <SafeAreaView style={styles.fullScreen}>
+          <Row style={styles.fullHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={font.h2}>Carte de Toulouse</Text>
+              <Text style={font.tiny}>
+                {mapDays[dayIdx]?.label} · {fmt(minutes)} ·{' '}
+                {mode === 'ville' ? 'toute la ville' : mode === 'hors-centre' ? 'hors centre' : 'près de moi'} · pincez
+                pour zoomer
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setFull(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer le plein écran"
+              hitSlop={10}
+              style={styles.closeBtn}
+            >
+              <X size={22} color={colors.text} />
+            </Pressable>
+          </Row>
+          <ZoneMap
+            zones={zones}
+            fillOf={fillOf}
+            excluded={(id) => byId[id].excluded}
+            selectedId={current.zoneId}
+            onSelect={setSelected}
+            topIds={top.map((s) => s.zoneId)}
+            airport={airport}
+            station={station}
+            user={from}
+            style={{ borderRadius: 0, borderLeftWidth: 0, borderRightWidth: 0 }}
           />
-          <SvgText x={airport.x} y={airport.y + 30} fill="#F5C451" fontSize={17} textAnchor="middle">
-            Aéroport
-          </SvgText>
-          {top.slice(0, 3).map((s, i) => {
-            const z = zones.find((x) => x.id === s.zoneId)!;
-            return (
-              <G key={s.zoneId}>
-                <Circle cx={z.cx} cy={z.cy} r={14} fill="#0A111F" stroke="#7BD88F" strokeWidth={2} />
-                <SvgText x={z.cx} y={z.cy + 6} fill="#7BD88F" fontSize={16} fontWeight="700" textAnchor="middle">
-                  {i + 1}
-                </SvgText>
-              </G>
-            );
-          })}
-          {from && (
-            <G>
-              <Circle cx={from.x} cy={from.y} r={16} fill={colors.primary} opacity={0.25} />
-              <Circle cx={from.x} cy={from.y} r={8} fill={colors.primary} stroke="#fff" strokeWidth={3} />
-            </G>
-          )}
-          {hubs
-            .filter((h) => h.id === 'matabiau')
-            .map((h) => (
-              <Circle key={h.id} cx={h.x} cy={h.y} r={5} fill="#fff" stroke="#0A111F" strokeWidth={2} />
-            ))}
-        </Svg>
-      </View>
+          <Card style={{ margin: spacing.lg }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={font.small}>
+                  {rank > 0 ? `${rank === 1 ? '1ʳᵉ' : `${rank}ᵉ`} zone sur ${eligible.length}` : 'Zone exclue'}
+                  {current.accessMin !== undefined ? ` · trajet ≈ ${current.accessMin} min` : ''}
+                </Text>
+                <Text style={font.h2}>{currentZone.name}</Text>
+                <Text style={font.tiny} numberOfLines={2}>
+                  {[...current.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0]?.detail}
+                </Text>
+              </View>
+              <View style={[styles.scoreBadge, { backgroundColor: rel(current.rankScore) }]}>
+                <Text style={styles.scoreText}>{current.rankScore}</Text>
+              </View>
+            </Row>
+          </Card>
+        </SafeAreaView>
+      </Modal>
 
       <View style={styles.legend}>
         <Text style={font.tiny}>Moins favorable</Text>
@@ -370,14 +385,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  map: {
-    aspectRatio: 1,
-    width: '100%',
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    backgroundColor: '#0D1628',
-    borderWidth: 1,
-    borderColor: colors.border,
+  fullScreen: { flex: 1, backgroundColor: colors.bg },
+  fullHeader: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.md },
+  closeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   legendBox: { width: 22, height: 10, borderRadius: 2 },
