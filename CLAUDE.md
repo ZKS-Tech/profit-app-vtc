@@ -18,6 +18,16 @@ npm run build:web    # export web dans dist/
 ```
 Dans un environnement sans accès à api.expo.dev : préfixer `npx expo install` / `expo export` par `EXPO_OFFLINE=1`.
 
+App Android (compte Expo « evanlgz », projet vtc-profit-ai, profil `pilote`) :
+```bash
+cd apps/mobile
+npx eas-cli build -p android --profile pilote --non-interactive --no-wait   # nouvelle version (module natif ajouté)
+EXPO_OFFLINE=1 npx eas-cli update --channel pilote --platform android --environment preview \
+  --message "…" --non-interactive                                          # mise à jour à distance (JS seulement)
+```
+Une mise à jour à distance ne vaut que pour la même `version` (runtimeVersion = appVersion) : ne pas changer
+`version` dans app.json sans recompiler.
+
 ## Règles produit (cahier des charges)
 - Ne jamais présenter une estimation comme une donnée Uber ; afficher provenance, confiance et date de mise à jour.
 - Aucune règle de plateforme codée en dur : catégories, avantages, commissions, seuils = configuration par pays/ville.
