@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Building2, ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { ZoneMap } from '../../components/ZoneMap';
 import { activity, activitySources, hubs, jobsEstimated, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
-import { centreIds, project, rankZones, unproject, type RankMode } from '../../domain/ranking';
+import { centreIds, project, rankZones, relaunchAdvice, unproject, type RankMode } from '../../domain/ranking';
+import { zoneAt } from '../../domain/geo';
+import { loadJournal, statusOf } from '../../journal/store';
 import { openNavigation } from '../../domain/navigation';
 import { useSettings } from '../../settings/store';
 import { useDriverPosition } from '../../hooks/useDriverPosition';
@@ -34,6 +37,27 @@ export default function MapHome() {
   const [minutes, setMinutes] = useState(() =>
     Math.min(23 * 60 + 30, Math.max(5 * 60, Math.floor((now.getHours() * 60 + now.getMinutes()) / STEP) * STEP)),
   );
+  const timeTouched = useRef(false);
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (timeTouched.current) return;
+    const d = new Date(clock);
+    setMinutes(Math.min(23 * 60 + 30, Math.max(5 * 60, Math.floor((d.getHours() * 60 + d.getMinutes()) / STEP) * STEP)));
+  }, [clock]);
+  // Temps sans course, d'après le journal (relu à chaque retour sur la carte et chaque minute).
+  const [idleSince, setIdleSince] = useState<string | null>(null);
+  const refreshIdle = useCallback(() => {
+    loadJournal().then((ev) => {
+      const st = statusOf(ev);
+      setIdleSince(st.status === 'disponible' && st.since ? st.since : null);
+    });
+  }, []);
+  useFocusEffect(refreshIdle);
+  useEffect(refreshIdle, [clock, refreshIdle]);
   const [selected, setSelected] = useState<string | null>(null);
   const { settings, loaded: settingsLoaded } = useSettings();
   const [mode, setMode] = useState<RankMode>('ville');
@@ -43,8 +67,6 @@ export default function MapHome() {
     if (settingsLoaded && !modeTouched.current) setMode(settings.defaultMode);
   }, [settingsLoaded, settings.defaultMode]);
   const [full, setFull] = useState(false);
-  const pos = useDriverPosition(mode === 'pres');
-  const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
   const date =
     pickedDate && live.days.includes(pickedDate)
       ? pickedDate
@@ -52,6 +74,11 @@ export default function MapHome() {
         ? todayStr
         : live.days[0];
   const dayIdx = live.days.indexOf(date);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const isNow = date === todayStr && Math.abs(minutes - nowMin) <= STEP;
+  // Position utilisée pour « Près de moi » et pour le conseil en temps réel.
+  const pos = useDriverPosition(mode === 'pres' || isNow);
+  const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
 
   const scores = useMemo(
     () =>
@@ -95,12 +122,20 @@ export default function MapHome() {
   const rank = eligible.findIndex((s) => s.zoneId === current.zoneId) + 1;
   const adjusted = mode === 'pres' && current.accessMin !== undefined;
   const best = eligible[0];
-  const bestZone = best ? zones.find((z) => z.id === best.zoneId) : undefined;
-  const bestReason = best
-    ? [...best.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0]?.detail
-    : '';
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const isNow = date === todayStr && Math.abs(minutes - nowMin) <= STEP;
+
+  // Conseil de relance : depuis la position, maintenant. Rester ou aller ailleurs ?
+  const idleMin = idleSince ? Math.max(0, Math.round((clock - +new Date(idleSince)) / 60000)) : null;
+  const hereZone = from ? zoneAt(from, zones, kmPerUnit) : null;
+  const advice = useMemo(() => {
+    if (!isNow || !from) return null;
+    const near = rankZones(scores, zones, { mode: 'pres', kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin });
+    return relaunchAdvice(near, hereZone?.id ?? null, idleMin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNow, scores, from?.x, from?.y, hereZone?.id, idleMin, settings.maxTripMin]);
+  const target = advice ? advice.best : best;
+  const targetZone = target ? zones.find((z) => z.id === target.zoneId) : undefined;
+  const reasonOf = (r: typeof best) =>
+    r ? [...r.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0]?.detail : '';
 
   const rain = rainFor(weather.hourly, new Date(`${date}T${fmt(minutes).replace('h', ':')}:00+01:00`));
   const airport = hubs.find((h) => h.id === 'aeroport')!;
@@ -116,48 +151,104 @@ export default function MapHome() {
           : `Données intégrées à l’app (Tisséo du ${shortDate(live.tisseo.fetchedAt)}, météo du ${shortDate(live.weather.fetchedAt)})${live.checkedAt ? ' · serveur injoignable' : ''}`}
       </Text>
 
-      {best && bestZone && (
+      {advice?.kind === 'stay' ? (
         <Card accent={colors.success} style={{ gap: spacing.sm }}>
           <Row style={{ gap: 6 }}>
             <Zap size={16} color={colors.success} />
-            <Text style={[font.small, { color: colors.success, fontWeight: '700' }]}>
-              {isNow ? 'QUE FAIRE MAINTENANT' : `CONSEIL POUR ${fmt(minutes)}`}
-            </Text>
+            <Text style={[font.small, { color: colors.success, fontWeight: '700' }]}>QUE FAIRE MAINTENANT</Text>
+            {idleMin !== null && idleMin >= 5 && <Text style={font.tiny}>· sans course depuis {idleMin} min</Text>}
           </Row>
           <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[font.h1, { fontSize: 22 }]}>Aller vers {bestZone.name}</Text>
+              <Text style={[font.h1, { fontSize: 22 }]}>Restez vers {hereZone?.name}</Text>
               <Text style={font.small} numberOfLines={2}>
-                {bestReason}
+                Rien de nettement mieux à moins de {settings.maxTripMin} min.
+                {advice.best
+                  ? ` Meilleure option proche : ${zones.find((z) => z.id === advice.best!.zoneId)?.name} (≈ ${advice.best.accessMin} min).`
+                  : ''}
               </Text>
-              {best.accessMin !== undefined && (
-                <Text style={font.small}>
-                  Trajet ≈ {best.accessMin} min ({best.km?.toLocaleString('fr-FR')} km)
-                </Text>
-              )}
             </View>
-            <View style={[styles.scoreBadge, { backgroundColor: rel(best.rankScore) }]}>
-              <Text style={styles.scoreText}>{best.rankScore}</Text>
+            <View style={[styles.scoreBadge, { backgroundColor: rel(advice.stayValue) }]}>
+              <Text style={styles.scoreText}>{advice.stayValue}</Text>
             </View>
           </Row>
           <Row style={{ gap: spacing.sm }}>
-            <Pressable
-              onPress={() => {
-                const g = unproject(bestZone.cx, bestZone.cy, projection);
-                openNavigation(g.lat, g.lon, bestZone.name, settings.nav);
-              }}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.goBtn, { opacity: pressed ? 0.8 : 1 }]}
-            >
-              <Navigation size={18} color="#fff" />
-              <Text style={styles.goText}>Y aller</Text>
-            </Pressable>
-            <Pressable onPress={() => setSelected(best.zoneId)} accessibilityRole="button" style={styles.detailBtn}>
+            {advice.best && (
+              <Pressable onPress={() => setSelected(advice.best!.zoneId)} accessibilityRole="button" style={styles.detailBtn}>
+                <Text style={[font.h3, { color: colors.text }]}>Voir l’option proche</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => setSelected(advice.here.zoneId)} accessibilityRole="button" style={styles.detailBtn}>
               <Text style={[font.h3, { color: colors.text }]}>Détail</Text>
             </Pressable>
           </Row>
-          <Text style={font.tiny}>Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.</Text>
+          <Text style={font.tiny}>
+            Conseil depuis votre position, trajet compris. Après 10 min sans course, la note de votre zone baisse
+            peu à peu. Potentiel estimé, pas un revenu garanti.
+          </Text>
         </Card>
+      ) : (
+        target &&
+        targetZone && (
+          <Card accent={colors.success} style={{ gap: spacing.sm }}>
+            <Row style={{ gap: 6 }}>
+              <Zap size={16} color={colors.success} />
+              <Text style={[font.small, { color: colors.success, fontWeight: '700' }]}>
+                {isNow ? 'QUE FAIRE MAINTENANT' : `CONSEIL POUR ${fmt(minutes)}`}
+              </Text>
+              {isNow && idleMin !== null && idleMin >= 5 && (
+                <Text style={font.tiny}>· sans course depuis {idleMin} min</Text>
+              )}
+            </Row>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1, gap: 2 }}>
+                {advice?.kind === 'go' && !advice.here && target.excluded && (
+                  <Text style={[font.small, { color: colors.warning }]}>
+                    Vous êtes hors de la zone couverte (Toulouse et environs). Zone la plus proche :
+                  </Text>
+                )}
+                <Text style={[font.h1, { fontSize: 22 }]}>Aller vers {targetZone.name}</Text>
+                <Text style={font.small} numberOfLines={2}>
+                  {reasonOf(target)}
+                </Text>
+                {target.accessMin !== undefined && (
+                  <Text style={font.small}>
+                    Trajet ≈ {target.accessMin} min ({target.km?.toLocaleString('fr-FR')} km)
+                    {advice?.kind === 'go' && advice.here && hereZone
+                      ? ` · mieux que ${hereZone.name} (${advice.stayValue})`
+                      : ''}
+                  </Text>
+                )}
+              </View>
+              <View style={[styles.scoreBadge, { backgroundColor: rel(target.rankScore) }]}>
+                <Text style={styles.scoreText}>{target.rankScore}</Text>
+              </View>
+            </Row>
+            <Row style={{ gap: spacing.sm }}>
+              <Pressable
+                onPress={() => {
+                  const g = unproject(targetZone.cx, targetZone.cy, projection);
+                  openNavigation(g.lat, g.lon, targetZone.name, settings.nav);
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.goBtn, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Navigation size={18} color="#fff" />
+                <Text style={styles.goText}>Y aller</Text>
+              </Pressable>
+              <Pressable onPress={() => setSelected(target.zoneId)} accessibilityRole="button" style={styles.detailBtn}>
+                <Text style={[font.h3, { color: colors.text }]}>Détail</Text>
+              </Pressable>
+            </Row>
+            <Text style={font.tiny}>
+              {advice
+                ? 'Conseil depuis votre position, trajet compris. Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.'
+                : isNow && pos.status !== 'ok'
+                  ? 'Autorisez la position pour un conseil depuis l’endroit où vous êtes. Potentiel estimé, pas un revenu garanti.'
+                  : 'Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.'}
+            </Text>
+          </Card>
+        )
       )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
         {mapDays.map((d, i) => {
@@ -178,7 +269,10 @@ export default function MapHome() {
 
       <Card style={styles.timeBar}>
         <Pressable
-          onPress={() => setMinutes((m) => Math.max(5 * 60, m - STEP))}
+          onPress={() => {
+            timeTouched.current = true;
+            setMinutes((m) => Math.max(5 * 60, m - STEP));
+          }}
           accessibilityRole="button"
           accessibilityLabel="30 minutes plus tôt"
           hitSlop={10}
@@ -205,7 +299,10 @@ export default function MapHome() {
           </Row>
         </View>
         <Pressable
-          onPress={() => setMinutes((m) => Math.min(23 * 60 + 30, m + STEP))}
+          onPress={() => {
+            timeTouched.current = true;
+            setMinutes((m) => Math.min(23 * 60 + 30, m + STEP));
+          }}
           accessibilityRole="button"
           accessibilityLabel="30 minutes plus tard"
           hitSlop={10}

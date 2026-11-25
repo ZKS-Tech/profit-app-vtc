@@ -72,3 +72,35 @@ export function rankZones(
 export function unproject(x: number, y: number, p: Projection, size = 1000) {
   return { lat: p.oy - (y / size) * p.span, lon: ((x / size) * p.span + p.ox) / p.kx };
 }
+
+/** Gain minimal (points de note, ou part de la note actuelle) pour conseiller de bouger plutôt que rester. */
+const MOVE_MIN_GAIN = 3;
+const MOVE_MIN_RATIO = 0.15;
+/** Après IDLE_FREE_MIN minutes sans course, la zone actuelle perd 1 % de sa note par minute (au plus 40 %). */
+const IDLE_FREE_MIN = 10;
+
+export type RelaunchAdvice =
+  | { kind: 'go'; best: Ranked; here?: Ranked; stayValue?: number }
+  | { kind: 'stay'; here: Ranked; best?: Ranked; stayValue: number };
+
+/**
+ * Temps mou : rester où l'on est, ou aller relancer ailleurs ?
+ * `near` = classement « près de moi » depuis la position du chauffeur. On ne conseille de bouger que si le
+ * gain, trajet compris, dépasse nettement la zone actuelle. Une longue attente sans course est un signe que la
+ * zone actuelle est moins bonne que prévu : sa note baisse avec le temps d'attente.
+ */
+export function relaunchAdvice(near: Ranked[], hereId: string | null, idleMin: number | null): RelaunchAdvice | null {
+  const here = hereId ? near.find((s) => s.zoneId === hereId) : undefined;
+  const others = near.filter((s) => s.zoneId !== hereId);
+  // Hors de portée (rien dans le rayon de trajet) : la zone la plus proche.
+  const best =
+    others.find((s) => !s.excluded) ?? [...others].sort((a, b) => (a.accessMin ?? 0) - (b.accessMin ?? 0))[0];
+  if (!here) return best ? { kind: 'go', best } : null;
+  const penalty = idleMin !== null && idleMin > IDLE_FREE_MIN ? Math.min(0.4, (idleMin - IDLE_FREE_MIN) / 100) : 0;
+  const stayValue = Math.round(here.score * (1 - penalty));
+  if (!best) return { kind: 'stay', here, stayValue };
+  const gain = best.rankScore - stayValue;
+  return gain >= Math.max(MOVE_MIN_GAIN, MOVE_MIN_RATIO * stayValue)
+    ? { kind: 'go', best, here, stayValue }
+    : { kind: 'stay', here, best, stayValue };
+}
