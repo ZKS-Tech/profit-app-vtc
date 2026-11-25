@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { saveJournal } from '../../journal/store';
 import { Minus, Plus } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import type { RankMode } from '../../domain/ranking';
@@ -80,15 +82,41 @@ export default function ProfileScreen() {
         </Text>
         <Text style={font.small}>• Le journal et ces réglages restent sur ce téléphone.</Text>
         <Text style={font.small}>
-          • Le journal n’est transmis que si vous appuyez sur « Envoyer le journal ». Il peut être effacé à tout
-          moment depuis l’onglet Journal.
+          • Le journal n’est transmis que si vous appuyez sur « Envoyer le journal ».
         </Text>
+        <ClearJournal />
       </Card>
 
       <SourceNote>
         Profil complet (véhicule, coûts, plateformes) : à venir, une fois l’historique de vos courses intégré.
       </SourceNote>
     </Screen>
+  );
+}
+
+/** Effacement complet du journal (et donc des statistiques), en deux appuis. */
+function ClearJournal() {
+  const [step, setStep] = useState<'idle' | 'confirm' | 'done'>('idle');
+  return (
+    <Pressable
+      onPress={async () => {
+        if (step === 'idle') return setStep('confirm');
+        if (step === 'confirm') {
+          await saveJournal([]);
+          setStep('done');
+        }
+      }}
+      accessibilityRole="button"
+      style={{ paddingVertical: spacing.sm, minHeight: 44, justifyContent: 'center' }}
+    >
+      <Text style={[font.small, { color: step === 'idle' ? colors.textMuted : colors.danger, fontWeight: '700' }]}>
+        {step === 'idle'
+          ? 'Effacer tout le journal…'
+          : step === 'confirm'
+            ? 'Confirmer : effacer le journal ET toutes les statistiques'
+            : 'Journal et statistiques effacés'}
+      </Text>
+    </Pressable>
   );
 }
 

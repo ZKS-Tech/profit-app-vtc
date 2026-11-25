@@ -17,6 +17,7 @@ import {
   formatEur,
   loadJournal,
   loadShownAdvice,
+  onJournalChange,
   parseAmount,
   sameDay,
   serviceHours,
@@ -61,7 +62,7 @@ export default function JournalScreen() {
   const [loaded, setLoaded] = useState(false);
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [noClient, setNoClient] = useState(false);
   const [shownAdvice, setShownAdvice] = useState<ShownAdvice | null>(null);
   const { settings } = useSettings();
@@ -80,9 +81,12 @@ export default function JournalScreen() {
     const id = setInterval(refresh, 30_000);
     // Retour au premier plan : compteurs et dernier conseil recalculés tout de suite.
     const sub = AppState.addEventListener('change', (st) => st === 'active' && refresh());
+    // Journal effacé depuis les Réglages : l'écran se met à jour.
+    const off = onJournalChange(setEvents);
     return () => {
       clearInterval(id);
       sub.remove();
+      off();
     };
   }, []);
 
@@ -171,13 +175,21 @@ export default function JournalScreen() {
     setNoClient(false);
   };
 
-  const exportJournal = async () => {
+  const exportJournal = async (which: 'jour' | 'tout') => {
+    const today = new Date().toLocaleDateString('fr-FR');
     try {
-      await Share.share({ title: 'Journal VTC Profit AI', message: toCsv(events) });
+      await Share.share({
+        title: which === 'jour' ? `Journal VTC Profit AI du ${today}` : 'Journal VTC Profit AI (complet)',
+        message: toCsv(which === 'jour' ? summary.events : events),
+      });
     } catch {
       // Partage indisponible (ex. navigateur) : rien à faire, le journal reste sur l'appareil.
     }
   };
+  const HISTORY = 6;
+  const history = [...summary.events].reverse();
+  const shown = showAll ? history : history.slice(0, HISTORY);
+  const pastDays = new Set(events.filter((e) => !sameDay(e.ts, new Date())).map((e) => e.ts.slice(0, 10))).size;
 
   return (
     <Screen title="Journal" subtitle="Ce que vous vivez sur le terrain" realData>
@@ -344,12 +356,36 @@ export default function JournalScreen() {
         <Stat label="Montants saisis" value={summary.revenue === null ? '—' : formatEur(summary.revenue)} />
       </Row>
 
+      <BigButton
+        label="Envoyer le journal du jour"
+        icon={<Send size={20} color="#fff" />}
+        color={colors.primary}
+        disabled={summary.events.length === 0}
+        onPress={() => exportJournal('jour')}
+      />
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Pressable
+          onPress={() => persist(events.slice(0, -1))}
+          disabled={events.length === 0}
+          style={styles.secondary}
+          accessibilityRole="button"
+        >
+          <Undo2 size={16} color={colors.textMuted} />
+          <Text style={font.small}>Annuler la dernière action</Text>
+        </Pressable>
+        {pastDays > 0 && (
+          <Pressable onPress={() => exportJournal('tout')} style={styles.secondary} accessibilityRole="button">
+            <Text style={font.small}>Envoyer tout ({pastDays + (summary.events.length ? 1 : 0)} jours)</Text>
+          </Pressable>
+        )}
+      </Row>
+
       <Card style={{ paddingVertical: spacing.xs }}>
         {summary.events.length === 0 ? (
           <Text style={[font.small, { paddingVertical: spacing.md }]}>Aucun événement aujourd’hui.</Text>
         ) : (
-          [...summary.events].reverse().map((e, i) => (
-            <View key={e.id} style={[styles.row, i < summary.events.length - 1 && styles.rowBorder]}>
+          shown.map((e, i) => (
+            <View key={e.id} style={[styles.row, i < shown.length - 1 && styles.rowBorder]}>
               <Text style={[font.h3, { width: 50 }]}>{hm(e.ts)}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={font.body}>
@@ -370,44 +406,19 @@ export default function JournalScreen() {
             </View>
           ))
         )}
+        {history.length > HISTORY && (
+          <Pressable onPress={() => setShowAll((v) => !v)} style={[styles.secondary, { justifyContent: 'center' }]} accessibilityRole="button">
+            <Text style={[font.small, { color: colors.primary, fontWeight: '700' }]}>
+              {showAll ? 'Réduire' : `Afficher toute la journée (${history.length} événements)`}
+            </Text>
+          </Pressable>
+        )}
       </Card>
 
-      <BigButton
-        label="Envoyer le journal"
-        icon={<Send size={20} color="#fff" />}
-        color={colors.primary}
-        disabled={events.length === 0}
-        onPress={exportJournal}
-      />
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Pressable
-          onPress={() => persist(events.slice(0, -1))}
-          disabled={events.length === 0}
-          style={styles.secondary}
-          accessibilityRole="button"
-        >
-          <Undo2 size={16} color={colors.textMuted} />
-          <Text style={font.small}>Annuler la dernière action</Text>
-        </Pressable>
-        <Pressable
-          onPress={async () => {
-            if (!confirmClear) return setConfirmClear(true);
-            await persist([]);
-            setConfirmClear(false);
-          }}
-          disabled={events.length === 0}
-          style={styles.secondary}
-          accessibilityRole="button"
-        >
-          <Text style={[font.small, { color: confirmClear ? colors.danger : colors.textMuted }]}>
-            {confirmClear ? 'Confirmer l’effacement' : 'Effacer le journal'}
-          </Text>
-        </Pressable>
-      </Row>
-
       <SourceNote>
-        Le journal reste sur ce téléphone. « Envoyer le journal » le partage au format tableur (WhatsApp, e-mail…). La
-        position est arrondie à environ 100 m.
+        Inutile d’effacer le journal après l’envoi : seule la journée en cours s’affiche ici, et les jours précédents
+        restent sur le téléphone pour l’onglet Stats. « Envoyer le journal du jour » le partage au format tableur
+        (WhatsApp, e-mail…). La position est arrondie à environ 100 m. Effacement complet : Réglages.
       </SourceNote>
     </Screen>
   );
