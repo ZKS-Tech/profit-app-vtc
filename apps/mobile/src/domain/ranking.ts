@@ -10,10 +10,26 @@ export type RankMode = 'ville' | 'hors-centre' | 'pres';
 export const CENTRE_RADIUS_KM = 1.45;
 /** Détour routier moyen par rapport à la ligne droite. */
 const ROAD_FACTOR = 1.35;
-/** Vitesse moyenne en ville, hors hypercentre. */
-const SPEED_KMH = 25;
-/** Temps perdu en plus pour entrer dans l'hypercentre (circulation, stationnement). */
+/** Temps perdu en plus pour entrer dans l'hypercentre (circulation, stationnement), hors heures de pointe. */
 const CENTRE_EXTRA_MIN = 5;
+
+/**
+ * Trafic : vitesse moyenne selon l'heure et le jour (hypothèses, faute de données trafic en temps réel).
+ * À remplacer par une source trafic (temps de parcours réels) quand elle sera choisie.
+ */
+export type Traffic = { speedKmh: number; centreExtraMin: number; label: string };
+export function trafficAt(minutes: number, dow: number): Traffic {
+  const h = minutes / 60;
+  const weekday = dow >= 1 && dow <= 5;
+  if (weekday && ((h >= 7 && h < 9.5) || (h >= 16.5 && h < 19.5)))
+    return { speedKmh: 17, centreExtraMin: 10, label: 'heure de pointe' };
+  if (h >= 22 || h < 6) return { speedKmh: 35, centreExtraMin: 2, label: 'circulation fluide (nuit)' };
+  if (h >= 19.5) return { speedKmh: 28, centreExtraMin: 4, label: 'circulation fluide (soirée)' };
+  return weekday
+    ? { speedKmh: 23, centreExtraMin: CENTRE_EXTRA_MIN, label: 'circulation de journée' }
+    : { speedKmh: 26, centreExtraMin: CENTRE_EXTRA_MIN, label: 'circulation de week-end' };
+}
+const NO_TRAFFIC: Traffic = { speedKmh: 25, centreExtraMin: CENTRE_EXTRA_MIN, label: '' };
 const HORIZON_MIN = 60;
 
 export type Projection = { kx: number; ox: number; oy: number; span: number };
@@ -32,10 +48,10 @@ export function centreIds(zones: Zone[], kmPerUnit: number): Set<string> {
   );
 }
 
-/** Temps d'accès estimé (minutes) depuis une position jusqu'au centre d'un quartier. */
-export function accessMinutes(from: Point, z: Zone, kmPerUnit: number, centre: Set<string>) {
+/** Temps d'accès estimé (minutes) depuis une position jusqu'au centre d'un quartier, selon le trafic. */
+export function accessMinutes(from: Point, z: Zone, kmPerUnit: number, centre: Set<string>, traffic = NO_TRAFFIC) {
   const km = Math.hypot(z.cx - from.x, z.cy - from.y) * kmPerUnit * ROAD_FACTOR;
-  return Math.round((km / SPEED_KMH) * 60 + (centre.has(z.id) ? CENTRE_EXTRA_MIN : 0));
+  return Math.round((km / traffic.speedKmh) * 60 + (centre.has(z.id) ? traffic.centreExtraMin : 0));
 }
 
 export type Ranked = ZoneScore & {
@@ -49,7 +65,15 @@ export type Ranked = ZoneScore & {
 export function rankZones(
   scores: ZoneScore[],
   zones: Zone[],
-  opts: { mode: RankMode; kmPerUnit: number; centre: Set<string>; from?: Point | null; maxTripMin?: number },
+  opts: {
+    mode: RankMode;
+    kmPerUnit: number;
+    centre: Set<string>;
+    from?: Point | null;
+    maxTripMin?: number;
+    /** Trafic à l'heure considérée : une zone plus lente à rejoindre est pénalisée. */
+    traffic?: Traffic;
+  },
 ): Ranked[] {
   const byId = new Map(zones.map((z) => [z.id, z]));
   return scores
@@ -57,7 +81,7 @@ export function rankZones(
       const z = byId.get(s.zoneId)!;
       const excluded = opts.mode === 'hors-centre' && opts.centre.has(s.zoneId);
       if (opts.mode === 'pres' && opts.from) {
-        const accessMin = accessMinutes(opts.from, z, opts.kmPerUnit, opts.centre);
+        const accessMin = accessMinutes(opts.from, z, opts.kmPerUnit, opts.centre, opts.traffic);
         const useful = Math.max(0, HORIZON_MIN - accessMin) / HORIZON_MIN;
         const km = Math.round(Math.hypot(z.cx - opts.from.x, z.cy - opts.from.y) * opts.kmPerUnit * ROAD_FACTOR * 10) / 10;
         const tooFar = opts.maxTripMin !== undefined && accessMin > opts.maxTripMin;

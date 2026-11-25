@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
-import { CarFront, Flag, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert, Undo2, Meh } from 'lucide-react-native';
+import { CarFront, Flag, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert, Undo2, Meh, UserCheck, X } from 'lucide-react-native';
+import { AmountPad } from '../../components/AmountPad';
+import { Gauge } from '../../components/Gauge';
+import { useSettings } from '../../settings/store';
 import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
 import { activity, hubs, kmPerUnit, projection, zones } from '../../data/zones';
 import { useLiveData } from '../../data/live';
@@ -9,13 +12,20 @@ import { zoneAt } from '../../domain/geo';
 import { project } from '../../domain/ranking';
 import { scoreZones } from '../../domain/zoneScore';
 import {
+  cycles,
   eventLabel,
+  formatEur,
   loadJournal,
+  loadShownAdvice,
+  parseAmount,
+  sameDay,
+  serviceHours,
+  type Follow,
+  type ShownAdvice,
   saveJournal,
   statusOf,
   todaySummary,
   toCsv,
-  waits,
   type JournalEvent,
   type Platform,
 } from '../../journal/store';
@@ -52,6 +62,9 @@ export default function JournalScreen() {
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [noClient, setNoClient] = useState(false);
+  const [shownAdvice, setShownAdvice] = useState<ShownAdvice | null>(null);
+  const { settings } = useSettings();
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -59,8 +72,18 @@ export default function JournalScreen() {
       setEvents(e);
       setLoaded(true);
     });
-    const id = setInterval(() => tick((n) => n + 1), 30_000);
-    return () => clearInterval(id);
+    const refresh = () => {
+      tick((n) => n + 1);
+      loadShownAdvice().then(setShownAdvice);
+    };
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    // Retour au premier plan : compteurs et dernier conseil recalculés tout de suite.
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && refresh());
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, []);
 
   const persist = useCallback(async (next: JournalEvent[]) => {
@@ -114,8 +137,39 @@ export default function JournalScreen() {
   const { status, since } = statusOf(events);
   const sinceMin = since ? Math.round((Date.now() - +new Date(since)) / 60000) : 0;
   const summary = todaySummary(events);
-  const waitById = new Map(waits(events).map((w) => [w.course.id, w.waitMin]));
+  const todayCycles = cycles(summary.events);
+  const cycleByCourse = new Map(todayCycles.map((c) => [c.course.id, c]));
+  const cycleByEnd = new Map<string, (typeof todayCycles)[number]>();
+  {
+    let open: string | null = null;
+    for (const e of summary.events) {
+      if (e.type === 'course') open = e.id;
+      if (e.type === 'fin-course' && open) {
+        const c = cycleByCourse.get(open);
+        if (c) cycleByEnd.set(e.id, c);
+        open = null;
+      }
+    }
+  }
   const lastIsEnd = events.length > 0 && events[events.length - 1].type === 'fin';
+  // Jauges : dernière course (attente + approche + trajet) et journée (revenus ÷ durée de service).
+  const lastRide = [...todayCycles].reverse().find((c) => c.eurPerHour !== undefined);
+  const dayHours = serviceHours(summary.events, Date.now());
+  const dayRate = summary.revenue !== null && dayHours > 0 ? summary.revenue / dayHours : null;
+  // Retour sur le dernier conseil de la carte : proposé pendant le service, une fois par conseil.
+  const adviceToRate =
+    shownAdvice &&
+    status !== 'hors-service' &&
+    sameDay(shownAdvice.ts, new Date()) &&
+    Date.now() - +new Date(shownAdvice.ts) < 3 * 3600_000 &&
+    !events.some((e) => e.type === 'retour-conseil' && e.advice?.ts === shownAdvice.ts)
+      ? shownAdvice
+      : null;
+  const finishRide = async () => {
+    await add({ type: 'fin-course', amount: parseAmount(amount) });
+    setAmount('');
+    setNoClient(false);
+  };
 
   const exportJournal = async () => {
     try {
@@ -141,7 +195,9 @@ export default function JournalScreen() {
             ? 'Hors service'
             : status === 'disponible'
               ? `Disponible depuis ${sinceMin} min`
-              : `En course depuis ${sinceMin} min`}
+              : status === 'approche'
+                ? `En approche depuis ${sinceMin} min`
+                : `Client à bord depuis ${sinceMin} min`}
         </Text>
 
         {status === 'hors-service' && (
@@ -179,28 +235,37 @@ export default function JournalScreen() {
           </>
         )}
 
-        {status === 'en-course' && (
+        {status === 'approche' && !noClient && (
           <>
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="Montant de la course en € (facultatif)"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="decimal-pad"
-              style={styles.input}
-              accessibilityLabel="Montant de la course en euros"
-            />
             <BigButton
-              label="Course terminée"
+              label="Client à bord"
+              icon={<UserCheck size={22} color="#fff" />}
+              color={colors.success}
+              disabled={busy}
+              onPress={() => add({ type: 'a-bord' })}
+            />
+            <Pressable onPress={() => setNoClient(true)} disabled={busy} style={styles.secondary}>
+              <X size={16} color={colors.textMuted} />
+              <Text style={font.small}>Course annulée ou terminée sans client</Text>
+            </Pressable>
+          </>
+        )}
+
+        {(status === 'en-course' || (status === 'approche' && noClient)) && (
+          <>
+            <AmountPad value={amount} onChange={setAmount} />
+            <BigButton
+              label={noClient && status === 'approche' ? 'Terminer (sans client)' : 'Course terminée'}
               icon={<Flag size={22} color="#fff" />}
               color={colors.primary}
               disabled={busy}
-              onPress={async () => {
-                const n = parseFloat(amount.replace(',', '.'));
-                await add({ type: 'fin-course', amount: Number.isFinite(n) ? n : undefined });
-                setAmount('');
-              }}
+              onPress={finishRide}
             />
+            {noClient && status === 'approche' && (
+              <Pressable onPress={() => setNoClient(false)} style={styles.secondary}>
+                <Text style={font.small}>Retour</Text>
+              </Pressable>
+            )}
           </>
         )}
 
@@ -230,11 +295,53 @@ export default function JournalScreen() {
         )}
       </Card>
 
+      {adviceToRate && (
+        <Card style={{ gap: spacing.sm }}>
+          <Text style={font.small}>
+            Conseil de la carte à {hm(adviceToRate.ts)} : <Text style={{ fontWeight: '800' }}>{adviceToRate.text}</Text>
+          </Text>
+          <Text style={font.h3}>L’avez-vous suivi ?</Text>
+          <Row style={{ gap: spacing.sm }}>
+            {(
+              [
+                { f: 'oui', label: 'Oui', c: colors.success },
+                { f: 'partiel', label: 'En partie', c: colors.warning },
+                { f: 'non', label: 'Non', c: colors.danger },
+              ] as { f: Follow; label: string; c: string }[]
+            ).map(({ f, label, c }) => (
+              <Pressable
+                key={f}
+                disabled={busy}
+                onPress={() => add({ type: 'retour-conseil', advice: adviceToRate, follow: f })}
+                style={[styles.answer, { borderColor: c }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Conseil suivi : ${label}`}
+              >
+                <Text style={[font.h3, { color: c }]}>{label}</Text>
+              </Pressable>
+            ))}
+          </Row>
+          <Text style={font.tiny}>Ne change ni le service en cours ni les compteurs.</Text>
+        </Card>
+      )}
+
       <SectionTitle>Aujourd’hui</SectionTitle>
+      <Row style={{ gap: spacing.sm }}>
+        <Gauge
+          label="Dernière course"
+          value={lastRide?.eurPerHour ?? null}
+          target={settings.targetEurH}
+          hint="Attente, approche et trajet compris"
+        />
+        <Gauge label="Journée" value={dayRate} target={settings.targetEurH} hint="Revenus ÷ durée de service" />
+      </Row>
+      <Text style={[font.tiny, { marginTop: -spacing.xs }]}>
+        Revenu horaire saisi, pas un bénéfice : les frais du véhicule ne sont pas déduits.
+      </Text>
       <Row style={{ gap: spacing.sm }}>
         <Stat label="Courses" value={`${summary.rides}`} />
         <Stat label="Attente moyenne" value={summary.avgWait === null ? '—' : `${summary.avgWait} min`} />
-        <Stat label="Montants saisis" value={summary.revenue === null ? '—' : `${Math.round(summary.revenue)} €`} />
+        <Stat label="Montants saisis" value={summary.revenue === null ? '—' : formatEur(summary.revenue)} />
       </Row>
 
       <Card style={{ paddingVertical: spacing.xs }}>
@@ -248,12 +355,15 @@ export default function JournalScreen() {
                 <Text style={font.body}>
                   {eventLabel(e.type)}
                   {e.platform ? ` · ${e.platform}` : ''}
-                  {e.amount !== undefined ? ` · ${e.amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ''}
+                  {e.amount !== undefined ? ` · ${formatEur(e.amount)}` : ''}
                   {e.rating ? ` · ${e.rating}` : ''}
+                  {e.follow ? ` · ${e.follow === 'partiel' ? 'en partie' : e.follow}` : ''}
                 </Text>
                 <Text style={font.tiny}>
+                  {e.advice ? `${e.advice.text} (${hm(e.advice.ts)}) · ` : ''}
                   {e.zoneName ?? 'Position inconnue'}
-                  {waitById.has(e.id) ? ` · attente ${waitById.get(e.id)} min` : ''}
+                  {cycleByCourse.has(e.id) ? ` · attente ${cycleByCourse.get(e.id)!.waitMin} min` : ''}
+                  {cycleByEnd.has(e.id) ? cycleText(cycleByEnd.get(e.id)!) : ''}
                   {e.appRank ? ` · rang app ${e.appRank} (n°1 : ${e.appTop})` : ''}
                 </Text>
               </View>
@@ -301,6 +411,15 @@ export default function JournalScreen() {
       </SourceNote>
     </Screen>
   );
+}
+
+function cycleText(c: { approachMin?: number; tripMin?: number; rideMin?: number; eurPerHour?: number }) {
+  const parts = [
+    c.approachMin !== undefined ? `approche ${c.approachMin} min` : null,
+    c.tripMin !== undefined ? `trajet ${c.tripMin} min` : c.rideMin !== undefined ? `course ${c.rideMin} min` : null,
+    c.eurPerHour !== undefined ? `${Math.round(c.eurPerHour)} €/h` : null,
+  ].filter(Boolean);
+  return parts.length ? ` · ${parts.join(' · ')}` : '';
 }
 
 function BigButton({
@@ -363,6 +482,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    backgroundColor: colors.surfaceAlt,
+  },
+  answer: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.surfaceAlt,
   },
   secondary: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.sm, minHeight: 44 },

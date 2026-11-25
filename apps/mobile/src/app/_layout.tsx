@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DemoProvider } from '../demo/DemoContext';
 import { LiveDataProvider } from '../data/live';
 import { SettingsProvider } from '../settings/store';
+import { KeepAwakeOnDuty } from '../components/KeepAwakeOnDuty';
 import { colors } from '../theme';
 
 /** Sur grand écran web, l'aperçu s'affiche dans un cadre de téléphone. */
@@ -25,6 +26,7 @@ export default function RootLayout() {
       <LiveDataProvider>
       <DemoProvider>
         <StatusBar style="light" />
+        <KeepAwakeOnDuty />
         <PhoneFrame>
           <Stack
             screenOptions={{

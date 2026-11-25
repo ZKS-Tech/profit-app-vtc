@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChartColumn, Map, NotebookPen, Settings } from 'lucide-react-native';
 import { colors } from '../../theme';
 
 export default function TabsLayout() {
+  // Marge de la barre de navigation Android (gestes ou 3 boutons) : les onglets restent au-dessus.
+  const { bottom } = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -12,9 +15,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          height: 64,
+          height: 64 + bottom,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 8 + bottom,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         sceneStyle: { backgroundColor: colors.bg },

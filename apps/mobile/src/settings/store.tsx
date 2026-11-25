@@ -10,9 +10,11 @@ export type Settings = {
   /** En mode « Près de moi », zones au-delà de ce temps de trajet écartées (minutes). */
   maxTripMin: number;
   nav: NavApp;
+  /** Cible de revenu horaire pour les jauges du journal (€/h). */
+  targetEurH: number;
 };
 
-export const DEFAULT_SETTINGS: Settings = { defaultMode: 'ville', maxTripMin: 25, nav: 'choix' };
+export const DEFAULT_SETTINGS: Settings = { defaultMode: 'ville', maxTripMin: 25, nav: 'choix', targetEurH: 30 };
 const KEY = 'reglages-v1';
 
 const Ctx = createContext<{ settings: Settings; update: (p: Partial<Settings>) => void; loaded: boolean }>({

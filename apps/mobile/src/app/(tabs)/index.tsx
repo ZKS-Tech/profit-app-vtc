@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Building2, ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { ZoneMap } from '../../components/ZoneMap';
 import { activity, activitySources, hubs, jobsEstimated, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
-import { centreIds, project, rankZones, relaunchAdvice, unproject, type RankMode } from '../../domain/ranking';
+import { centreIds, project, rankZones, relaunchAdvice, trafficAt, unproject, type RankMode } from '../../domain/ranking';
+import { saveShownAdvice } from '../../journal/store';
 import { zoneAt } from '../../domain/geo';
 import { loadJournal, statusOf } from '../../journal/store';
 import { openNavigation } from '../../domain/navigation';
@@ -41,7 +42,12 @@ export default function MapHome() {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 60_000);
-    return () => clearInterval(t);
+    // Retour au premier plan : l'heure et les compteurs sont recalculés tout de suite.
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && setClock(Date.now()));
+    return () => {
+      clearInterval(t);
+      sub.remove();
+    };
   }, []);
   useEffect(() => {
     if (timeTouched.current) return;
@@ -80,6 +86,7 @@ export default function MapHome() {
   const pos = useDriverPosition(mode === 'pres' || isNow);
   const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
 
+  const traffic = useMemo(() => trafficAt(minutes, new Date(`${date}T12:00:00`).getDay()), [minutes, date]);
   const scores = useMemo(
     () =>
       scoreZones({
@@ -97,7 +104,7 @@ export default function MapHome() {
     [date, minutes, hubArrivals, tisseo, weather],
   );
   const { ranked, allTooFar } = useMemo(() => {
-    const opts = { mode, kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin };
+    const opts = { mode, kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin, traffic };
     const r = rankZones(scores, zones, opts);
     // Aucune zone à portée (chauffeur hors de l'agglomération) : on garde les plus proches plutôt que rien.
     if (r.every((s) => s.excluded)) {
@@ -108,7 +115,7 @@ export default function MapHome() {
     }
     return { ranked: r, allTooFar: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scores, mode, from?.x, from?.y, settings.maxTripMin]);
+  }, [scores, mode, from?.x, from?.y, settings.maxTripMin, traffic]);
   const byId = useMemo(() => Object.fromEntries(ranked.map((s) => [s.zoneId, s])), [ranked]);
   const eligibleRaw = ranked.filter((s) => !s.excluded);
   // Garde-fou : jamais de liste vide (sinon l'écran ne peut pas s'afficher).
@@ -128,12 +135,26 @@ export default function MapHome() {
   const hereZone = from ? zoneAt(from, zones, kmPerUnit) : null;
   const advice = useMemo(() => {
     if (!isNow || !from) return null;
-    const near = rankZones(scores, zones, { mode: 'pres', kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin });
+    const near = rankZones(scores, zones, { mode: 'pres', kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin, traffic });
     return relaunchAdvice(near, hereZone?.id ?? null, idleMin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNow, scores, from?.x, from?.y, hereZone?.id, idleMin, settings.maxTripMin]);
+  }, [isNow, scores, from?.x, from?.y, hereZone?.id, idleMin, settings.maxTripMin, traffic]);
   const target = advice ? advice.best : best;
   const targetZone = target ? zones.find((z) => z.id === target.zoneId) : undefined;
+  // Mémorise le conseil affiché « maintenant », pour que le chauffeur puisse dire s'il l'a suivi (Journal).
+  const adviceText = !isNow
+    ? null
+    : advice?.kind === 'stay'
+      ? `Restez vers ${hereZone?.name}`
+      : targetZone
+        ? `Aller vers ${targetZone.name}`
+        : null;
+  const lastAdvice = useRef<string | null>(null);
+  useEffect(() => {
+    if (!adviceText || adviceText === lastAdvice.current) return;
+    lastAdvice.current = adviceText;
+    saveShownAdvice({ ts: new Date().toISOString(), text: adviceText });
+  }, [adviceText]);
   const reasonOf = (r: typeof best) =>
     r ? [...r.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0]?.detail : '';
 
@@ -183,8 +204,8 @@ export default function MapHome() {
             </Pressable>
           </Row>
           <Text style={font.tiny}>
-            Conseil depuis votre position, trajet compris. Après 10 min sans course, la note de votre zone baisse
-            peu à peu. Potentiel estimé, pas un revenu garanti.
+            Conseil depuis votre position, trajet compris ({traffic.label}, estimé selon l’heure). Après 10 min sans
+            course, la note de votre zone baisse peu à peu. Potentiel estimé, pas un revenu garanti.
           </Text>
         </Card>
       ) : (
@@ -213,7 +234,7 @@ export default function MapHome() {
                 </Text>
                 {target.accessMin !== undefined && (
                   <Text style={font.small}>
-                    Trajet ≈ {target.accessMin} min ({target.km?.toLocaleString('fr-FR')} km)
+                    Trajet ≈ {target.accessMin} min ({target.km?.toLocaleString('fr-FR')} km, {traffic.label})
                     {advice?.kind === 'go' && advice.here && hereZone
                       ? ` · mieux que ${hereZone.name} (${advice.stayValue})`
                       : ''}
@@ -242,7 +263,7 @@ export default function MapHome() {
             </Row>
             <Text style={font.tiny}>
               {advice
-                ? 'Conseil depuis votre position, trajet compris. Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.'
+                ? 'Conseil depuis votre position, trajet compris. Trafic estimé selon l’heure (pas de données en temps réel). Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.'
                 : isNow && pos.status !== 'ok'
                   ? 'Autorisez la position pour un conseil depuis l’endroit où vous êtes. Potentiel estimé, pas un revenu garanti.'
                   : 'Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.'}

@@ -43,6 +43,22 @@ export default function ProfileScreen() {
         </View>
 
         <View style={{ gap: spacing.sm }}>
+          <Text style={font.h3}>Objectif de revenu horaire</Text>
+          <Text style={font.small}>
+            Cible des jauges du journal (revenu par heure, attente et approche comprises ; pas un bénéfice net).
+          </Text>
+          <Row style={{ justifyContent: 'center', gap: spacing.lg }}>
+            <Stepper label="Moins" onPress={() => update({ targetEurH: Math.max(10, settings.targetEurH - 1) })}>
+              <Minus size={20} color={colors.text} />
+            </Stepper>
+            <Text style={[font.h1, { minWidth: 90, textAlign: 'center' }]}>{settings.targetEurH} €/h</Text>
+            <Stepper label="Plus" onPress={() => update({ targetEurH: Math.min(80, settings.targetEurH + 1) })}>
+              <Plus size={20} color={colors.text} />
+            </Stepper>
+          </Row>
+        </View>
+
+        <View style={{ gap: spacing.sm }}>
           <Text style={font.h3}>Application GPS pour « Y aller »</Text>
           <Segmented<NavApp>
             label="Application GPS"

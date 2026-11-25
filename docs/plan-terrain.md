@@ -102,8 +102,9 @@ Objectif : améliorer la précision de la carte jour après jour, sur l'indicate
 **les € par heure mobilisée** (montant ÷ (attente + course)), pas seulement l'attente : une zone avec une longue
 attente peut rester rentable si les courses y sont mieux payées (aéroport, Blagnac).
 
-1. **Fabrice, pendant le service** : « Début de service » une fois, puis « Course acceptée » et « Fin de course »
-   avec le montant. « Fin de service » seulement pour une vraie pause (un arrêt de moins de 45 min est compté
+1. **Fabrice, pendant le service** : « Début de service » une fois, puis pour chaque course « Course acceptée »,
+   « Client à bord » et « Course terminée » avec le montant (pavé avec virgule). Quand la carte a donné un conseil,
+   répondre « Oui / En partie / Non » dans le Journal (à l'arrêt), sans couper le service. « Fin de service » seulement pour une vraie pause (un arrêt de moins de 45 min est compté
    comme de l'attente). Un avis sur la carte en fin de journée suffit.
 2. **Le soir** : Journal → Partager le CSV, envoyé avec une ligne de contexte (pause, file aéroport, incident).
 3. **Évaluation** : `cd apps/mobile && npm run evaluer -- journal-*.csv` (tous les jours cumulés). Le script

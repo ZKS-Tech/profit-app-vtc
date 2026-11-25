@@ -1,31 +1,8 @@
 // Statistiques calculées à partir du journal de terrain (données réelles saisies par le chauffeur).
-import { cycles, PAUSE_MIN, type Cycle } from './cycles';
+import { cycles, PAUSE_MIN, serviceHours, type Cycle } from './cycles';
 import type { JournalEvent } from './store';
 
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : null);
-
-/**
- * Heures de service : de chaque « début » au « fin » suivant (ou à maintenant si le service est en cours).
- * Les arrêts de moins de PAUSE_MIN minutes comptent comme du service (attente entre deux courses).
- */
-function serviceHours(events: JournalEvent[], now: number) {
-  let total = 0;
-  let start: number | null = null;
-  let lastEnd: number | null = null;
-  for (const e of events) {
-    const t = +new Date(e.ts);
-    if (e.type === 'debut') {
-      if (lastEnd !== null && t - lastEnd <= PAUSE_MIN * 60_000) total += t - lastEnd;
-      start = t;
-    } else if (e.type === 'fin' && start !== null) {
-      total += t - start;
-      start = null;
-      lastEnd = t;
-    }
-  }
-  if (start !== null) total += now - start;
-  return total / 3_600_000;
-}
 
 /** € par heure mobilisée (attente + course) sur des cycles dont le montant est saisi. */
 function eurPerHour(cs: Cycle[]) {

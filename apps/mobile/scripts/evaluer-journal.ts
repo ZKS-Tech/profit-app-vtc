@@ -14,29 +14,39 @@ import { activity, hubArrivals, hubs, kmPerUnit, tisseo, weather, zones } from '
 const TYPES: Record<string, EventType> = {
   'Début de service': 'debut',
   'Course acceptée': 'course',
+  'Client à bord': 'a-bord',
   'Fin de course': 'fin-course',
   'Fin de service': 'fin',
   'Avis sur la carte': 'avis',
+  'Retour sur conseil': 'retour-conseil',
 };
 
 type Row = Cycle & { date: string; minutes: number; modelRank?: number };
+const feedback: JournalEvent[] = [];
 
 function load(file: string): Row[] {
-  const lines = readFileSync(file, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/).slice(1);
+  const [head, ...lines] = readFileSync(file, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/);
+  // Colonnes lues par leur nom : l'export a gagné des colonnes au fil des versions.
+  const col = head.split(';');
   const events: JournalEvent[] = lines.map((l, i) => {
-    const [d, h, ev, platform, amount, , zone, , rang] = l.split(';');
-    const [dd, mm, yyyy] = d.split('/');
+    const cell: Record<string, string> = Object.fromEntries(l.split(';').map((v, j) => [col[j], v]));
+    const [dd, mm, yyyy] = cell.date.split('/');
     return {
       id: `${file}:${i}`,
-      ts: `${yyyy}-${mm}-${dd}T${h}:00`,
-      type: TYPES[ev],
-      platform: (platform || undefined) as JournalEvent['platform'],
-      amount: amount ? Number(amount.replace(',', '.')) : undefined,
-      zoneName: zone || undefined,
-      zoneId: zones.find((z) => z.name === zone)?.id,
-      appRank: rang ? Number(rang) : undefined,
+      ts: `${yyyy}-${mm}-${dd}T${cell.heure}:00`,
+      type: TYPES[cell.evenement],
+      platform: (cell.plateforme || undefined) as JournalEvent['platform'],
+      amount: cell.montant_eur ? Number(cell.montant_eur.replace(',', '.')) : undefined,
+      zoneName: cell.zone || undefined,
+      zoneId: zones.find((z) => z.name === cell.zone)?.id,
+      appRank: cell.rang_app ? Number(cell.rang_app) : undefined,
+      lat: cell.lat ? Number(cell.lat) : undefined,
+      lon: cell.lon ? Number(cell.lon) : undefined,
+      advice: cell.conseil ? { ts: cell.heure_conseil ?? '', text: cell.conseil } : undefined,
+      follow: (cell.conseil_suivi || undefined) as JournalEvent['follow'],
     };
   });
+  feedback.push(...events.filter((e) => e.type === 'retour-conseil'));
   return cycles(events.filter((e) => e.type)).map((c) => {
     const [date, time] = c.course.ts.split('T');
     const [h, m] = time.split(':').map(Number);
@@ -70,7 +80,7 @@ for (const r of rows) {
 }
 
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`;
-console.log('date        heure zone                       attente course  montant   €/h  rang app  rang modèle');
+console.log('date        heure zone                       attente approche trajet  montant   €/h  rang app  rang modèle');
 for (const r of rows) {
   console.log(
     [
@@ -78,7 +88,8 @@ for (const r of rows) {
       hhmm(r.minutes),
       (r.course.zoneName ?? 'hors carte').padEnd(26),
       `${r.waitMin} min`.padStart(7),
-      `${r.rideMin ?? '?'} min`.padStart(6),
+      `${r.approachMin ?? '?'} min`.padStart(8),
+      `${r.tripMin ?? r.rideMin ?? '?'} min`.padStart(6),
       `${r.amount?.toFixed(2) ?? '—'} €`.padStart(8),
       `${r.eurPerHour === undefined ? '—' : Math.round(r.eurPerHour)}`.padStart(5),
       `${r.course.appRank ?? '—'}`.padStart(9),
@@ -126,6 +137,10 @@ function verdict(label: string, rank: (r: Row) => number | undefined) {
 console.log(`\n${rows.length} courses sur ${days.size} jour(s) · ${eph(rows) ?? '—'} €/h mobilisée en moyenne`);
 verdict('Version du jour', (r) => r.course.appRank);
 verdict('Modèle actuel', (r) => r.modelRank);
+if (feedback.length) {
+  const n = (f: string) => feedback.filter((e) => e.follow === f).length;
+  console.log(`Conseils notés : ${feedback.length} (suivis ${n('oui')}, en partie ${n('partiel')}, non suivis ${n('non')})`);
+}
 console.log(
   '\nLecture : corrélation proche de 0 = la carte ne distingue pas encore les bonnes zones ; il faut cumuler\n' +
     'plusieurs jours (≥ 50 courses) avant de changer les poids sur la foi de ces chiffres.',
