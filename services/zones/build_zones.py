@@ -119,7 +119,8 @@ def main():
         d = "M" + " L".join(f"{x} {y}" for x, y in pts) + " Z"
         cx = sum(x for x, _ in pts) / len(pts)
         cy = sum(y for _, y in pts) / len(pts)
-        gp = json.loads(props["geo_point_2d"].replace("'", '"')) if isinstance(props.get("geo_point_2d"), str) else {}
+        raw_gp = props.get("geo_point_2d")
+        gp = json.loads(raw_gp.replace("'", '"')) if isinstance(raw_gp, str) else (raw_gp or {})
         clon, clat = gp.get("lon"), gp.get("lat")
         area = ring_area_km2(ring)
         pop = float(props.get("p19_pop") or 0)

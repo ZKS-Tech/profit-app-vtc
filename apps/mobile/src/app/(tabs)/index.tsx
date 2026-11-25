@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { ZoneMap } from '../../components/ZoneMap';
 import { hubs, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
-import { centreIds, project, rankZones, type RankMode } from '../../domain/ranking';
+import { centreIds, project, rankZones, unproject, type RankMode } from '../../domain/ranking';
+import { openNavigation } from '../../domain/navigation';
+import { useSettings } from '../../settings/store';
 import { useDriverPosition } from '../../hooks/useDriverPosition';
 import { dayLabel, useLiveData } from '../../data/live';
 import { hubInflow, rainFor, SCORE_COLORS, scoreColor, scoreZones, WEIGHTS } from '../../domain/zoneScore';
@@ -33,7 +35,13 @@ export default function MapHome() {
     Math.min(23 * 60 + 30, Math.max(5 * 60, Math.floor((now.getHours() * 60 + now.getMinutes()) / STEP) * STEP)),
   );
   const [selected, setSelected] = useState<string | null>(null);
+  const { settings, loaded: settingsLoaded } = useSettings();
   const [mode, setMode] = useState<RankMode>('ville');
+  // Mode par défaut choisi dans le Profil, appliqué une fois les réglages chargés.
+  const modeTouched = useRef(false);
+  useEffect(() => {
+    if (settingsLoaded && !modeTouched.current) setMode(settings.defaultMode);
+  }, [settingsLoaded, settings.defaultMode]);
   const [full, setFull] = useState(false);
   const pos = useDriverPosition(mode === 'pres');
   const from = pos.status === 'ok' ? project(pos.lat, pos.lon, projection) : null;
@@ -61,9 +69,9 @@ export default function MapHome() {
     [date, minutes, hubArrivals, tisseo, weather],
   );
   const ranked = useMemo(
-    () => rankZones(scores, zones, { mode, kmPerUnit, centre: CENTRE, from }),
+    () => rankZones(scores, zones, { mode, kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scores, mode, from?.x, from?.y],
+    [scores, mode, from?.x, from?.y, settings.maxTripMin],
   );
   const byId = useMemo(() => Object.fromEntries(ranked.map((s) => [s.zoneId, s])), [ranked]);
   const eligible = ranked.filter((s) => !s.excluded);
@@ -75,6 +83,13 @@ export default function MapHome() {
   const currentZone = zones.find((z) => z.id === current.zoneId)!;
   const rank = eligible.findIndex((s) => s.zoneId === current.zoneId) + 1;
   const adjusted = mode === 'pres' && current.accessMin !== undefined;
+  const best = eligible[0];
+  const bestZone = best ? zones.find((z) => z.id === best.zoneId) : undefined;
+  const bestReason = best
+    ? [...best.factors].sort((a, b) => WEIGHTS[b.key] * b.value - WEIGHTS[a.key] * a.value)[0]?.detail
+    : '';
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const isNow = date === todayStr && Math.abs(minutes - nowMin) <= STEP;
 
   const rain = rainFor(weather.hourly, new Date(`${date}T${fmt(minutes).replace('h', ':')}:00+01:00`));
   const airport = hubs.find((h) => h.id === 'aeroport')!;
@@ -89,6 +104,50 @@ export default function MapHome() {
           ? `Mis à jour · Tisséo ${live.updated.tisseo ? hhmm(live.updated.tisseo) : `du ${shortDate(live.tisseo.fetchedAt)}`} · météo ${hhmm(live.updated.meteo)} · trains et cars ${hhmm(live.updated.transport)}`
           : `Données intégrées à l’app (Tisséo du ${shortDate(live.tisseo.fetchedAt)}, météo du ${shortDate(live.weather.fetchedAt)})${live.checkedAt ? ' · serveur injoignable' : ''}`}
       </Text>
+
+      {best && bestZone && (
+        <Card accent={colors.success} style={{ gap: spacing.sm }}>
+          <Row style={{ gap: 6 }}>
+            <Zap size={16} color={colors.success} />
+            <Text style={[font.small, { color: colors.success, fontWeight: '700' }]}>
+              {isNow ? 'QUE FAIRE MAINTENANT' : `CONSEIL POUR ${fmt(minutes)}`}
+            </Text>
+          </Row>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[font.h1, { fontSize: 22 }]}>Aller vers {bestZone.name}</Text>
+              <Text style={font.small} numberOfLines={2}>
+                {bestReason}
+              </Text>
+              {best.accessMin !== undefined && (
+                <Text style={font.small}>
+                  Trajet ≈ {best.accessMin} min ({best.km?.toLocaleString('fr-FR')} km)
+                </Text>
+              )}
+            </View>
+            <View style={[styles.scoreBadge, { backgroundColor: rel(best.rankScore) }]}>
+              <Text style={styles.scoreText}>{best.rankScore}</Text>
+            </View>
+          </Row>
+          <Row style={{ gap: spacing.sm }}>
+            <Pressable
+              onPress={() => {
+                const g = unproject(bestZone.cx, bestZone.cy, projection);
+                openNavigation(g.lat, g.lon, bestZone.name, settings.nav);
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.goBtn, { opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Navigation size={18} color="#fff" />
+              <Text style={styles.goText}>Y aller</Text>
+            </Pressable>
+            <Pressable onPress={() => setSelected(best.zoneId)} accessibilityRole="button" style={styles.detailBtn}>
+              <Text style={[font.h3, { color: colors.text }]}>Détail</Text>
+            </Pressable>
+          </Row>
+          <Text style={font.tiny}>Itinéraire à lancer à l’arrêt. Potentiel estimé, pas un revenu garanti.</Text>
+        </Card>
+      )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
         {mapDays.map((d, i) => {
           const active = i === dayIdx;
@@ -149,6 +208,7 @@ export default function MapHome() {
         label="Quartiers proposés"
         value={mode}
         onChange={(m) => {
+          modeTouched.current = true;
           setMode(m);
           setSelected(null);
         }}
@@ -386,6 +446,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fullScreen: { flex: 1, backgroundColor: colors.bg },
+  goBtn: {
+    flex: 2,
+    minHeight: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.success,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  goText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  detailBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fullHeader: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.md },
   closeBtn: {
     width: 44,

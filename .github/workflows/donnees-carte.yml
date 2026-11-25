@@ -65,7 +65,7 @@ jobs:
 
       - name: Publication Supabase
         if: always()
-        run: python3 services/publish_supabase.py build/data
+        run: python3 services/publish_supabase.py build/data --archive
 
       - name: Copie de secours (artefact GitHub)
         if: always()

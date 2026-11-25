@@ -49,7 +49,7 @@ export type Ranked = ZoneScore & {
 export function rankZones(
   scores: ZoneScore[],
   zones: Zone[],
-  opts: { mode: RankMode; kmPerUnit: number; centre: Set<string>; from?: Point | null },
+  opts: { mode: RankMode; kmPerUnit: number; centre: Set<string>; from?: Point | null; maxTripMin?: number },
 ): Ranked[] {
   const byId = new Map(zones.map((z) => [z.id, z]));
   return scores
@@ -60,9 +60,15 @@ export function rankZones(
         const accessMin = accessMinutes(opts.from, z, opts.kmPerUnit, opts.centre);
         const useful = Math.max(0, HORIZON_MIN - accessMin) / HORIZON_MIN;
         const km = Math.round(Math.hypot(z.cx - opts.from.x, z.cy - opts.from.y) * opts.kmPerUnit * ROAD_FACTOR * 10) / 10;
-        return { ...s, rankScore: Math.round(s.score * useful), accessMin, km, excluded };
+        const tooFar = opts.maxTripMin !== undefined && accessMin > opts.maxTripMin;
+        return { ...s, rankScore: Math.round(s.score * useful), accessMin, km, excluded: excluded || tooFar };
       }
       return { ...s, rankScore: s.score, excluded };
     })
     .sort((a, b) => Number(a.excluded) - Number(b.excluded) || b.rankScore - a.rankScore);
+}
+
+/** Coordonnées de la carte → position GPS (inverse de `project`). */
+export function unproject(x: number, y: number, p: Projection, size = 1000) {
+  return { lat: p.oy - (y / size) * p.span, lon: ((x / size) * p.span + p.ox) / p.kx };
 }

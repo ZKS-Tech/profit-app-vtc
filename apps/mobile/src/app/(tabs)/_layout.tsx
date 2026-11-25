@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { CalendarDays, ChartColumn, Map, NotebookPen, User } from 'lucide-react-native';
+import { ChartColumn, Map, NotebookPen, Settings } from 'lucide-react-native';
 import { colors } from '../../theme';
 
 export default function TabsLayout() {
@@ -30,17 +30,15 @@ export default function TabsLayout() {
       />
       {/* Arrivées gares/aéroport : calcul côté serveur, écran masqué (décision du 23/11). */}
       <Tabs.Screen name="arrivees" options={{ href: null }} />
-      <Tabs.Screen
-        name="planification"
-        options={{ title: 'Planif.', tabBarIcon: ({ color }) => <CalendarDays size={22} color={color} /> }}
-      />
+      {/* Planification : données fictives, masquée pendant le test terrain. */}
+      <Tabs.Screen name="planification" options={{ href: null }} />
       <Tabs.Screen
         name="stats"
         options={{ title: 'Stats', tabBarIcon: ({ color }) => <ChartColumn size={22} color={color} /> }}
       />
       <Tabs.Screen
         name="profil"
-        options={{ title: 'Profil', tabBarIcon: ({ color }) => <User size={22} color={color} /> }}
+        options={{ title: 'Réglages', tabBarIcon: ({ color }) => <Settings size={22} color={color} /> }}
       />
     </Tabs>
   );

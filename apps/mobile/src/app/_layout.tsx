@@ -4,6 +4,7 @@ import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DemoProvider } from '../demo/DemoContext';
 import { LiveDataProvider } from '../data/live';
+import { SettingsProvider } from '../settings/store';
 import { colors } from '../theme';
 
 /** Sur grand écran web, l'aperçu s'affiche dans un cadre de téléphone. */
@@ -20,6 +21,7 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <SettingsProvider>
       <LiveDataProvider>
       <DemoProvider>
         <StatusBar style="light" />
@@ -36,6 +38,7 @@ export default function RootLayout() {
         </PhoneFrame>
       </DemoProvider>
       </LiveDataProvider>
+      </SettingsProvider>
     </SafeAreaProvider>
   );
 }

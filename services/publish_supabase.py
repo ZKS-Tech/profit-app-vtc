@@ -8,22 +8,51 @@ Variables d'environnement (secrets GitHub, jamais dans l'app) :
 
 L'app lit ensuite : <SUPABASE_URL>/storage/v1/object/public/<bucket>/carte/<fichier>
 
-    python3 services/publish_supabase.py build/data
+Avec --archive, les relevés qui changent dans la journée (Tisséo, météo) sont aussi copiés dans
+archives/AAAA-MM-JJ/HHhMM-<fichier>, pour pouvoir comparer plus tard ce que l'app prévoyait à ce qui
+s'est passé. Les fichiers de trains et cars sont déjà datés et ne sont jamais écrasés d'un jour à l'autre.
+
+    python3 services/publish_supabase.py build/data [--archive]
 """
 from __future__ import annotations
 
 import os
 import sys
 import urllib.request
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 PREFIX = "carte"
+ARCHIVED = ("tisseo-perturbations.json", "meteo-toulouse.json")
+
+
+def upload(url: str, key: str, bucket: str, path: str, body: bytes) -> None:
+    req = urllib.request.Request(
+        f"{url}/storage/v1/object/{bucket}/{path}",
+        data=body,
+        method="POST",
+        headers={
+            # Nouvelles clés « sb_secret_… » : uniquement dans `apikey`.
+            # Ancienne clé service_role (JWT) : dans `apikey` et `Authorization`.
+            **({} if key.startswith("sb_secret_") else {"Authorization": f"Bearer {key}"}),
+            "apikey": key,
+            "Content-Type": "application/json",
+            "x-upsert": "true",  # remplace le fichier existant
+            "Cache-Control": "max-age=60",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        if r.status >= 300:
+            raise RuntimeError(f"{path} : HTTP {r.status}")
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    archive = "--archive" in sys.argv[1:]
+    if len(args) != 1:
         print(__doc__)
         return 2
-    folder = sys.argv[1]
+    folder = args[0]
     url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     bucket = os.environ.get("SUPABASE_BUCKET", "donnees")
@@ -36,27 +65,16 @@ def main() -> int:
     files = sorted(f for f in os.listdir(folder) if f.endswith(".json"))
     # manifest.json en dernier : l'app ne le voit qu'une fois tous les fichiers en place.
     files = [f for f in files if f != "manifest.json"] + (["manifest.json"] if "manifest.json" in files else [])
+    stamp = datetime.now(ZoneInfo("Europe/Paris"))
     for name in files:
         with open(os.path.join(folder, name), "rb") as f:
             body = f.read()
-        req = urllib.request.Request(
-            f"{url}/storage/v1/object/{bucket}/{PREFIX}/{name}",
-            data=body,
-            method="POST",
-            headers={
-                # Nouvelles clés « sb_secret_… » : uniquement dans `apikey`.
-                # Ancienne clé service_role (JWT) : dans `apikey` et `Authorization`.
-                **({} if key.startswith("sb_secret_") else {"Authorization": f"Bearer {key}"}),
-                "apikey": key,
-                "Content-Type": "application/json",
-                "x-upsert": "true",  # remplace le fichier existant
-                "Cache-Control": "max-age=60",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=60) as r:
-            if r.status >= 300:
-                raise RuntimeError(f"{name} : HTTP {r.status}")
+        upload(url, key, bucket, f"{PREFIX}/{name}", body)
         print(f"publié : {PREFIX}/{name} ({len(body) // 1024} Ko)")
+        if archive and name in ARCHIVED:
+            path = f"archives/{stamp:%Y-%m-%d}/{stamp:%Hh%M}-{name}"
+            upload(url, key, bucket, path, body)
+            print(f"archivé : {path}")
     return 0
 
 
