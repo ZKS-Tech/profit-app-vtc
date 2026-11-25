@@ -95,3 +95,21 @@ Ensuite seulement : recommandations par zone de ville, multi-plateforme complet,
 1. **Fabrice** : demander l'export « Télécharger mes données » sur myprivacy.uber.com, et l'export de ses données Bolt.
 2. **Vous** : valider la liste des lieux (Matabiau, Blagnac, gare routière, MEETT, stades et salles…) et les critères de réussite.
 3. **Développement** : vérifier les licences SNCF et les prix des API de vols, puis lancer la chaîne d'import des trains, la source la plus simple et la plus fiable.
+
+## Boucle quotidienne de test
+
+Objectif : améliorer la précision de la carte jour après jour, sur l'indicateur qui compte pour le chauffeur,
+**les € par heure mobilisée** (montant ÷ (attente + course)), pas seulement l'attente : une zone avec une longue
+attente peut rester rentable si les courses y sont mieux payées (aéroport, Blagnac).
+
+1. **Fabrice, pendant le service** : « Début de service » une fois, puis « Course acceptée » et « Fin de course »
+   avec le montant. « Fin de service » seulement pour une vraie pause (un arrêt de moins de 45 min est compté
+   comme de l'attente). Un avis sur la carte en fin de journée suffit.
+2. **Le soir** : Journal → Partager le CSV, envoyé avec une ligne de contexte (pause, file aéroport, incident).
+3. **Évaluation** : `cd apps/mobile && npm run evaluer -- journal-*.csv` (tous les jours cumulés). Le script
+   compare, course par course, le rang de la zone dans la version du jour et dans le modèle actuel au €/h réel.
+4. **Décision** : on ne change les poids que si la variante fait mieux sur l'ensemble des jours cumulés
+   (≥ 50 courses), pas sur une seule journée.
+
+Les journaux contiennent des montants et des positions : ils restent hors du dépôt (public), dossier `terrain/`
+ignoré par git.

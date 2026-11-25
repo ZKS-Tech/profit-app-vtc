@@ -50,19 +50,8 @@ const sameDay = (iso: string, d: Date) => {
   return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
 };
 
-/** Attente avant chaque course = temps depuis le dernier « début » ou la dernière « fin de course ». */
-export function waits(events: JournalEvent[]) {
-  const out: { course: JournalEvent; waitMin: number }[] = [];
-  let availableSince: string | null = null;
-  for (const e of events) {
-    if (e.type === 'debut' || e.type === 'fin-course') availableSince = e.ts;
-    else if (e.type === 'course' && availableSince) {
-      out.push({ course: e, waitMin: Math.round((+new Date(e.ts) - +new Date(availableSince)) / 60000) });
-      availableSince = null;
-    } else if (e.type === 'fin') availableSince = null;
-  }
-  return out;
-}
+export { cycles, waits, PAUSE_MIN, type Cycle } from './cycles';
+import { waits } from './cycles';
 
 export function todaySummary(events: JournalEvent[], now = new Date()) {
   const today = events.filter((e) => sameDay(e.ts, now));

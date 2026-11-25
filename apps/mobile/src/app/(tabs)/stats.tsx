@@ -66,15 +66,11 @@ export default function StatsScreen() {
               <Text style={font.small}>Pas encore de course avec une note de l’app enregistrée.</Text>
             ) : (
               <>
-                <Compare
-                  label="Course prise dans une zone du top 10 de l’app"
-                  rides={s.app.inTop.rides}
-                  wait={s.app.inTop.avgWait}
-                />
-                <Compare label="Course prise ailleurs" rides={s.app.outTop.rides} wait={s.app.outTop.avgWait} />
+                <Compare label="Course prise dans une zone du top 10 de l’app" {...s.app.inTop} />
+                <Compare label="Course prise ailleurs" {...s.app.outTop} />
                 <Text style={font.tiny}>
-                  Si l’attente est plus courte dans le top 10, la carte va dans le bon sens. Il faut une vingtaine de
-                  courses de chaque côté pour conclure.
+                  €/h = montant ÷ (attente + course). Si le top 10 rapporte plus par heure, la carte va dans le bon
+                  sens. Il faut plusieurs jours et une vingtaine de courses de chaque côté pour conclure.
                 </Text>
               </>
             )}
@@ -93,24 +89,30 @@ export default function StatsScreen() {
       )}
 
       <SourceNote>
-        L’attente compte le temps depuis le début du service ou la fin de la course précédente, trajets à vide
-        compris. Les pauses doivent être saisies comme une fin de service.
+        L’attente compte le temps depuis la fin de la course précédente (ou le début du service), trajets à vide
+        compris. Un arrêt de service de moins de 45 min compte comme de l’attente ; au-delà, c’est une pause.
       </SourceNote>
     </Screen>
   );
 }
 
-function Compare({ label, rides, wait }: { label: string; rides: number; wait: number | null }) {
+type Side = { rides: number; avgWait: number | null; eurPerHour: number | null };
+
+function Compare({ label, rides, avgWait, eurPerHour }: Side & { label: string }) {
   return (
     <Row style={{ justifyContent: 'space-between' }}>
-      <Text style={[font.body, { flex: 1 }]}>{label}</Text>
-      <Text style={font.h3}>{wait === null ? '—' : `${wait} min`}</Text>
-      <Text style={[font.tiny, { width: 70, textAlign: 'right' }]}>{rides} course(s)</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={font.body}>{label}</Text>
+        <Text style={font.tiny}>
+          {rides} course(s) · attente {avgWait === null ? '—' : `${avgWait} min`}
+        </Text>
+      </View>
+      <Text style={font.h3}>{eurPerHour === null ? '—' : `${eurPerHour} €/h`}</Text>
     </Row>
   );
 }
 
-function Table({ rows }: { rows: { name: string; rides: number; avgWait: number | null }[] }) {
+function Table({ rows }: { rows: (Side & { name: string })[] }) {
   return (
     <Card style={{ paddingVertical: spacing.xs }}>
       {rows.length === 0 ? (
@@ -119,8 +121,10 @@ function Table({ rows }: { rows: { name: string; rides: number; avgWait: number 
         rows.map((r, i) => (
           <Row key={r.name} style={[styles.row, i < rows.length - 1 && styles.rowBorder]}>
             <Text style={[font.body, { flex: 1 }]}>{r.name}</Text>
-            <Text style={font.small}>{r.rides} course(s)</Text>
-            <Text style={[font.h3, { width: 70, textAlign: 'right' }]}>{r.avgWait === null ? '—' : `${r.avgWait} min`}</Text>
+            <Text style={font.small}>
+              {r.rides} course(s) · {r.avgWait === null ? '—' : `${r.avgWait} min`}
+            </Text>
+            <Text style={[font.h3, { width: 76, textAlign: 'right' }]}>{r.eurPerHour === null ? '—' : `${r.eurPerHour} €/h`}</Text>
           </Row>
         ))
       )}
