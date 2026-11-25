@@ -59,3 +59,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
 });
+
+// Affiché à la place de l'écran en cas d'erreur (au lieu d'un écran vide).
+export { ErrorScreen as ErrorBoundary } from '../components/ErrorScreen';

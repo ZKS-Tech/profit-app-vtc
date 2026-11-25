@@ -94,3 +94,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// Affiché à la place de l'écran en cas d'erreur (au lieu d'un écran vide).
+export { ErrorScreen as ErrorBoundary } from '../../components/ErrorScreen';

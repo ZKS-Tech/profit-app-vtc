@@ -68,13 +68,23 @@ export default function MapHome() {
       }),
     [date, minutes, hubArrivals, tisseo, weather],
   );
-  const ranked = useMemo(
-    () => rankZones(scores, zones, { mode, kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin }),
+  const { ranked, allTooFar } = useMemo(() => {
+    const opts = { mode, kmPerUnit, centre: CENTRE, from, maxTripMin: settings.maxTripMin };
+    const r = rankZones(scores, zones, opts);
+    // Aucune zone à portée (chauffeur hors de l'agglomération) : on garde les plus proches plutôt que rien.
+    if (r.every((s) => s.excluded)) {
+      const near = rankZones(scores, zones, { ...opts, maxTripMin: undefined }).sort(
+        (a, b) => (a.accessMin ?? 0) - (b.accessMin ?? 0) || b.score - a.score,
+      );
+      return { ranked: near, allTooFar: true };
+    }
+    return { ranked: r, allTooFar: false };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scores, mode, from?.x, from?.y, settings.maxTripMin],
-  );
+  }, [scores, mode, from?.x, from?.y, settings.maxTripMin]);
   const byId = useMemo(() => Object.fromEntries(ranked.map((s) => [s.zoneId, s])), [ranked]);
-  const eligible = ranked.filter((s) => !s.excluded);
+  const eligibleRaw = ranked.filter((s) => !s.excluded);
+  // Garde-fou : jamais de liste vide (sinon l'écran ne peut pas s'afficher).
+  const eligible = eligibleRaw.length ? eligibleRaw : ranked;
   const top = eligible.slice(0, 5);
   // Couleurs relatives : le quartier le plus favorable du moment prend la teinte la plus forte.
   const maxScore = Math.max(1, eligible[0].rankScore);
@@ -228,7 +238,9 @@ export default function MapHome() {
           <Navigation size={13} color={pos.status === 'ok' ? colors.success : colors.textMuted} />
           <Text style={[font.tiny, { flex: 1 }]}>
             {pos.status === 'ok'
-              ? 'Note ajustée au temps de trajet depuis votre position (non enregistrée).'
+              ? allTooFar
+                ? `Aucune zone à moins de ${settings.maxTripMin} min de votre position : voici les plus proches (réglable dans Réglages).`
+                : 'Note ajustée au temps de trajet depuis votre position (non enregistrée).'
               : pos.status === 'pending'
                 ? 'Recherche de votre position…'
                 : pos.status === 'refused'
@@ -495,3 +507,6 @@ const styles = StyleSheet.create({
   miniBadge: { minWidth: 36, paddingVertical: 4, borderRadius: radius.pill, alignItems: 'center' },
   miniText: { color: '#fff', fontWeight: '800', fontSize: 13 },
 });
+
+// Affiché à la place de l'écran en cas d'erreur (au lieu d'un écran vide).
+export { ErrorScreen as ErrorBoundary } from '../../components/ErrorScreen';

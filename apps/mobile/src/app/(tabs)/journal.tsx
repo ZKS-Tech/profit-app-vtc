@@ -379,3 +379,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 10 },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
 });
+
+// Affiché à la place de l'écran en cas d'erreur (au lieu d'un écran vide).
+export { ErrorScreen as ErrorBoundary } from '../../components/ErrorScreen';
