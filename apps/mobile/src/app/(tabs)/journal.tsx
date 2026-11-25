@@ -3,7 +3,7 @@ import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-nativ
 import * as Location from 'expo-location';
 import { CarFront, Flag, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert, Undo2, Meh } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
-import { hubs, kmPerUnit, projection, zones } from '../../data/zones';
+import { activity, hubs, kmPerUnit, projection, zones } from '../../data/zones';
 import { useLiveData } from '../../data/live';
 import { zoneAt } from '../../domain/geo';
 import { project } from '../../domain/ranking';
@@ -96,6 +96,7 @@ export default function JournalScreen() {
           alertsFetchedAt: live.tisseo.fetchedAt,
           weather: live.weather.hourly,
           kmPerUnit,
+          activity,
         });
         ev.appTop = zones.find((z) => z.id === scores[0].zoneId)?.name;
         const i = scores.findIndex((s) => s.zoneId === ev.zoneId);

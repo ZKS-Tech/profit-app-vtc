@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
+import { Building2, ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { ZoneMap } from '../../components/ZoneMap';
-import { hubs, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
+import { activity, activitySources, hubs, jobsEstimated, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
 import { centreIds, project, rankZones, unproject, type RankMode } from '../../domain/ranking';
 import { openNavigation } from '../../domain/navigation';
 import { useSettings } from '../../settings/store';
@@ -65,6 +65,7 @@ export default function MapHome() {
         alertsFetchedAt: tisseo.fetchedAt,
         weather: weather.hourly,
         kmPerUnit,
+        activity,
       }),
     [date, minutes, hubArrivals, tisseo, weather],
   );
@@ -417,11 +418,21 @@ export default function MapHome() {
             Événements (matchs, concerts, salons) : aucune source ouverte à jour. Calendrier à constituer.
           </Text>
         </Row>
+        {jobsEstimated.length > 0 && (
+          <Row>
+            <Building2 size={16} color={colors.warning} />
+            <Text style={[font.small, { flex: 1 }]}>
+              Emplois estimés d’après la population (hors base SIRENE de la Métropole) : {jobsEstimated.join(', ')}.
+              Les zones d’activité comme Labège sont sans doute sous-évaluées.
+            </Text>
+          </Row>
+        )}
       </Card>
 
       <SourceNote>
         Quartiers : {zonesSource.name}, {zonesSource.licence}. Trains : horaires SNCF ; cars : FlixBus et BlaBlaCar Bus
-        (ODbL). Perturbations : Tisséo temps réel (ODbL), relevé du{' '}
+        (ODbL). Activité : {activitySources.emplois} ; lieux {activitySources.lieux} ; vacances scolaires et jours fériés
+        (Éducation nationale). Perturbations : Tisséo temps réel (ODbL), relevé du{' '}
         {new Date(tisseo.fetchedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. Météo :
         Météo-France (Licence Ouverte), modèle AROME du{' '}
         {new Date(weather.aromeRun).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}.

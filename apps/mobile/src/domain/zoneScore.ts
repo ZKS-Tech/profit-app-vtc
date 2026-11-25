@@ -5,6 +5,7 @@
 // Le résultat est un potentiel de demande (0–100), pas un revenu ni un nombre de courses.
 
 import type { ArrivalDay } from './arrivals';
+import { activityAt, dayLabelOf, type Activity, type Calendar } from './activity';
 
 export type Zone = {
   id: string;
@@ -31,15 +32,15 @@ export type TisseoAlert = {
 };
 
 export type Factor = { key: FactorKey; label: string; value: number; detail: string };
-export type FactorKey = 'transport' | 'density' | 'disruption' | 'events' | 'weather';
+export type FactorKey = 'transport' | 'activity' | 'disruption' | 'events' | 'weather';
 
 export type ZoneScore = { zoneId: string; score: number; factors: Factor[] };
 
 /** Poids des facteurs (hypothèse v0). Les facteurs sans source connectée ne comptent pas. */
 export const WEIGHTS: Record<FactorKey, number> = {
-  transport: 0.45,
-  density: 0.3,
-  disruption: 0.15,
+  transport: 0.35,
+  activity: 0.35, // emplois, habitants et lieux, selon l'heure et le type de jour
+  disruption: 0.1,
   events: 0.1,
   weather: 0.1, // même valeur pour tous les quartiers : la pluie fait monter la demande partout
 };
@@ -103,6 +104,8 @@ export function scoreZones(params: {
   weather?: WeatherHour[];
   /** Échelle de la carte (km par unité), pour le rayon d'influence des pôles. */
   kmPerUnit: number;
+  /** Emplois, habitants et lieux par zone + calendrier ; sans eux, on retombe sur la densité. */
+  activity?: { data: Record<string, Activity>; calendar: Calendar };
 }): ZoneScore[] {
   const { zones, hubs, arrivals, date, minutes, alerts } = params;
   const at = new Date(`${date}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:00+01:00`);
@@ -114,6 +117,9 @@ export function scoreZones(params: {
   });
   const active = alerts.filter((a) => a.impact >= 0.3 && isActive(a, at, new Date(params.alertsFetchedAt)));
   const rain = params.weather ? rainFor(params.weather, at) : null;
+  const act = params.activity
+    ? activityAt(params.activity.data, zones, date, minutes, params.activity.calendar)
+    : null;
 
   return zones
     .map((z) => {
@@ -139,13 +145,20 @@ export function scoreZones(params: {
           value: Math.min(1, seats / TRANSPORT_REF),
           detail: near.length ? near.join(' · ') : 'Aucune arrivée longue distance dans l’heure',
         },
-        {
-          key: 'density',
-          label: 'Densité de population',
-          // Racine carrée : la demande ne croît pas proportionnellement au nombre d'habitants (hypothèse).
-          value: Math.sqrt(z.density / maxDensity),
-          detail: `${z.density.toLocaleString('fr-FR')} hab./km² (INSEE 2019)`,
-        },
+        act
+          ? {
+              key: 'activity',
+              label: 'Activité du quartier à cette heure',
+              value: act.value[z.id] ?? 0,
+              detail: `${act.detail[z.id]} — profil ${dayLabelOf(act.day)}`,
+            }
+          : {
+              key: 'activity',
+              label: 'Densité de population',
+              // Racine carrée : la demande ne croît pas proportionnellement au nombre d'habitants (hypothèse).
+              value: Math.sqrt(z.density / maxDensity),
+              detail: `${z.density.toLocaleString('fr-FR')} hab./km² (INSEE 2019)`,
+            },
         {
           key: 'disruption',
           label: 'Perturbations Tisséo',

@@ -1,0 +1,119 @@
+{
+ "sources": {
+  "vacances": "Calendrier scolaire, académie de Toulouse (data.education.gouv.fr, Licence Ouverte)",
+  "feries": "Jours fériés calculés"
+ },
+ "vacances": [
+  {
+   "nom": "Vacances d'Été",
+   "debut": "2026-07-04",
+   "fin": "2026-09-01"
+  },
+  {
+   "nom": "Vacances de la Toussaint",
+   "debut": "2026-10-17",
+   "fin": "2026-11-02"
+  },
+  {
+   "nom": "Vacances de Noël",
+   "debut": "2026-12-19",
+   "fin": "2027-01-04"
+  },
+  {
+   "nom": "Vacances d'Hiver",
+   "debut": "2027-02-06",
+   "fin": "2027-02-22"
+  },
+  {
+   "nom": "Vacances de Printemps",
+   "debut": "2027-04-03",
+   "fin": "2027-04-19"
+  },
+  {
+   "nom": "Pont de l'Ascension",
+   "debut": "2027-05-07",
+   "fin": "2027-05-07"
+  },
+  {
+   "nom": "Vacances d'Été",
+   "debut": "2027-07-03",
+   "fin": "2027-09-02"
+  },
+  {
+   "nom": "Vacances de la Toussaint",
+   "debut": "2027-10-23",
+   "fin": "2027-11-08"
+  },
+  {
+   "nom": "Vacances de Noël",
+   "debut": "2027-12-18",
+   "fin": "2028-01-03"
+  },
+  {
+   "nom": "Vacances d'Hiver",
+   "debut": "2028-02-12",
+   "fin": "2028-02-28"
+  },
+  {
+   "nom": "Vacances de Printemps",
+   "debut": "2028-04-15",
+   "fin": "2028-05-02"
+  },
+  {
+   "nom": "Pont de l'Ascension",
+   "debut": "2028-05-25",
+   "fin": "2028-05-29"
+  },
+  {
+   "nom": "Début des Vacances d'Été",
+   "debut": "2028-07-04",
+   "fin": "2028-07-04"
+  }
+ ],
+ "feries": {
+  "2025-01-01": "Jour de l'an",
+  "2025-04-21": "Lundi de Pâques",
+  "2025-05-01": "Fête du travail",
+  "2025-05-08": "Victoire 1945",
+  "2025-05-29": "Ascension",
+  "2025-06-09": "Lundi de Pentecôte",
+  "2025-07-14": "Fête nationale",
+  "2025-08-15": "Assomption",
+  "2025-11-01": "Toussaint",
+  "2025-11-11": "Armistice",
+  "2025-12-25": "Noël",
+  "2026-01-01": "Jour de l'an",
+  "2026-04-06": "Lundi de Pâques",
+  "2026-05-01": "Fête du travail",
+  "2026-05-08": "Victoire 1945",
+  "2026-05-14": "Ascension",
+  "2026-05-25": "Lundi de Pentecôte",
+  "2026-07-14": "Fête nationale",
+  "2026-08-15": "Assomption",
+  "2026-11-01": "Toussaint",
+  "2026-11-11": "Armistice",
+  "2026-12-25": "Noël",
+  "2027-01-01": "Jour de l'an",
+  "2027-03-29": "Lundi de Pâques",
+  "2027-05-01": "Fête du travail",
+  "2027-05-06": "Ascension",
+  "2027-05-08": "Victoire 1945",
+  "2027-05-17": "Lundi de Pentecôte",
+  "2027-07-14": "Fête nationale",
+  "2027-08-15": "Assomption",
+  "2027-11-01": "Toussaint",
+  "2027-11-11": "Armistice",
+  "2027-12-25": "Noël",
+  "2028-01-01": "Jour de l'an",
+  "2028-04-17": "Lundi de Pâques",
+  "2028-05-01": "Fête du travail",
+  "2028-05-08": "Victoire 1945",
+  "2028-05-25": "Ascension",
+  "2028-06-05": "Lundi de Pentecôte",
+  "2028-07-14": "Fête nationale",
+  "2028-08-15": "Assomption",
+  "2028-11-01": "Toussaint",
+  "2028-11-11": "Armistice",
+  "2028-12-25": "Noël"
+ }
+}
