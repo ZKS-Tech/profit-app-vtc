@@ -54,6 +54,19 @@ export function ZoneMap({
 
   const k = vb.w / FULL; // facteur d'échelle pour garder traits et repères à taille constante
 
+  // Pendant un geste, les noms de quartiers sont masqués : redessiner 180 textes à chaque image fait ramer
+  // les téléphones Android. Ils réapparaissent dès que les doigts sont levés.
+  const [moving, setMoving] = useState(false);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startMoving = () => {
+    if (settle.current) clearTimeout(settle.current);
+    setMoving(true);
+  };
+  const stopMoving = () => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => setMoving(false), 120);
+  };
+
   // Un seul rafraîchissement par image pendant un geste (sinon des dizaines de rendus par seconde).
   const pending = useRef<VB | null>(null);
   const frame = useRef<number | null>(null);
@@ -120,6 +133,7 @@ export function ZoneMap({
           size.current = { w: w || 1, pageX: px, pageY: py };
         });
         snapshot(e);
+        startMoving();
       },
       onPanResponderMove: (e) => {
         const g = gesture.current;
@@ -139,12 +153,35 @@ export function ZoneMap({
       },
       onPanResponderRelease: () => {
         gesture.current = null;
+        stopMoving();
+      },
+      onPanResponderTerminate: () => {
+        gesture.current = null;
+        stopMoving();
       },
     });
   }, []);
 
-  const showLabels = vb.w < LABEL_W;
-  const visible = (z: Zone) => z.cx > vb.x && z.cx < vb.x + vb.w && z.cy > vb.y && z.cy < vb.y + vb.w;
+  const showLabels = vb.w < LABEL_W && !moving;
+  // Noms : calculés une fois par position de carte (pas à chaque rendu), seulement pour les zones visibles.
+  const labels = useMemo(() => {
+    if (!showLabels) return null;
+    const kk = vb.w / FULL;
+    return zones
+      .filter((z) => z.cx > vb.x && z.cx < vb.x + vb.w && z.cy > vb.y && z.cy < vb.y + vb.w)
+      .map((z) => (
+        <G key={`l-${z.id}`}>
+          {/* Contour sombre dessiné d'abord, texte clair par-dessus : lisible sur toutes les couleurs. */}
+          <SvgText x={z.cx} y={z.cy - 14 * kk} fill="#0A111F" stroke="#0A111F" strokeWidth={3 * kk}
+            fontSize={14 * kk} fontWeight="600" fontFamily="sans-serif" textAnchor="middle">
+            {z.name}
+          </SvgText>
+          <SvgText x={z.cx} y={z.cy - 14 * kk} fill="#EAF0F8" fontSize={14 * kk} fontWeight="600" fontFamily="sans-serif" textAnchor="middle">
+            {z.name}
+          </SvgText>
+        </G>
+      ));
+  }, [showLabels, vb.x, vb.y, vb.w, zones]);
 
   return (
     <View
@@ -160,19 +197,7 @@ export function ZoneMap({
     >
       <Svg width="100%" height="100%" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.w}`}>
         <G>{paths}</G>
-        {showLabels &&
-          zones.filter(visible).map((z) => (
-            <G key={`l-${z.id}`}>
-              {/* Contour sombre dessiné d'abord, texte clair par-dessus : lisible sur toutes les couleurs. */}
-              <SvgText x={z.cx} y={z.cy - 14 * k} fill="#0A111F" stroke="#0A111F" strokeWidth={3 * k}
-                fontSize={14 * k} fontWeight="600" fontFamily="sans-serif" textAnchor="middle">
-                {z.name}
-              </SvgText>
-              <SvgText x={z.cx} y={z.cy - 14 * k} fill="#EAF0F8" fontSize={14 * k} fontWeight="600" fontFamily="sans-serif" textAnchor="middle">
-                {z.name}
-              </SvgText>
-            </G>
-          ))}
+        {labels}
         {airport && (
           <>
             <Circle cx={airport.x} cy={airport.y} r={11 * k} fill="#0A111F" stroke="#F5C451" strokeWidth={2 * k} />
