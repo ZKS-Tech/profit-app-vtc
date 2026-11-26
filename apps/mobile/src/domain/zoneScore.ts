@@ -6,6 +6,7 @@
 
 import type { ArrivalDay } from './arrivals';
 import { dec, int } from './format';
+import { describe, EVENT_RADIUS_KM, impactAt, occurrencesOn, type CityEvent, type Venue } from './events';
 import { activityAt, dayLabelOf, type Activity, type Calendar } from './activity';
 
 export type Zone = {
@@ -42,7 +43,7 @@ export const WEIGHTS: Record<FactorKey, number> = {
   transport: 0.35,
   activity: 0.35, // emplois, habitants et lieux, selon l'heure et le type de jour
   disruption: 0.1,
-  events: 0.1,
+  events: 0.5, // sortie d'un match, d'un concert, fermeture d'un salon : la plus forte demande ponctuelle
   weather: 0.1, // même valeur pour tous les quartiers : la pluie fait monter la demande partout
 };
 
@@ -107,6 +108,8 @@ export function scoreZones(params: {
   kmPerUnit: number;
   /** Emplois, habitants et lieux par zone + calendrier ; sans eux, on retombe sur la densité. */
   activity?: { data: Record<string, Activity>; calendar: Calendar };
+  /** Événements saisis (matchs, concerts, salons) et leurs lieux placés sur la carte. */
+  events?: { list: CityEvent[]; venues: (Venue & { x: number; y: number; zoneId: string | null })[] };
 }): ZoneScore[] {
   const { zones, hubs, arrivals, date, minutes, alerts } = params;
   const at = new Date(`${date}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}:00+01:00`);
@@ -118,6 +121,7 @@ export function scoreZones(params: {
   });
   const active = alerts.filter((a) => a.impact >= 0.3 && isActive(a, at, new Date(params.alertsFetchedAt)));
   const rain = params.weather ? rainFor(params.weather, at) : null;
+  const occ = params.events ? occurrencesOn(params.events.list, params.events.venues, date).filter((o) => o.venue) : [];
   const act = params.activity
     ? activityAt(params.activity.data, zones, date, minutes, params.activity.calendar)
     : null;
@@ -169,6 +173,28 @@ export function scoreZones(params: {
             : 'Aucune perturbation métro, tram ou Linéo',
         },
       ];
+      if (params.events) {
+        // Événement dans la zone (100 %) ou à moins de EVENT_RADIUS_KM (50 %) ; on garde le plus fort.
+        let best = 0;
+        let text = '';
+        for (const o of occ) {
+          const v = params.events.venues.find((x) => x.id === o.venue!.id)!;
+          const inZone = v.zoneId === z.id;
+          const close = Math.hypot(v.x - z.cx, v.y - z.cy) * params.kmPerUnit < EVENT_RADIUS_KM;
+          if (!inZone && !close) continue;
+          const val = impactAt(o, minutes) * (inZone ? 1 : 0.5);
+          if (val > best) {
+            best = val;
+            text = `${describe(o, minutes)}${inZone ? '' : ` — ${v.nom}, à côté`}`;
+          }
+        }
+        factors.push({
+          key: 'events',
+          label: 'Événements',
+          value: best,
+          detail: best > 0 ? text : 'Aucun match, concert ou salon à proximité à cette heure',
+        });
+      }
       if (rain) {
         factors.push({
           key: 'weather',

@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { CloudRain, TrainFront, TrendingDown, TrendingUp, Minus as Flat } from 'lucide-react-native';
+import { CloudRain, PartyPopper, TrainFront, TrendingDown, TrendingUp, Minus as Flat } from 'lucide-react-native';
 import { Card, EmptyState, Kpi, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { byDay, bySlot, journalStats } from '../../journal/stats';
 import { gaugeColor } from '../../components/Gauge';
 import { HourBars } from '../../components/HourBars';
 import { useLiveData } from '../../data/live';
-import { activity, zones } from '../../data/zones';
+import { activity, events, zones } from '../../data/zones';
+import { hm as hmEvent } from '../../domain/events';
 import { FILL_RATE, forecastDays, type DayForecast } from '../../domain/forecast';
 import { useSettings } from '../../settings/store';
 import { loadJournal, type JournalEvent } from '../../journal/store';
@@ -74,11 +75,18 @@ function ForecastView() {
         activity,
         weather: live.weather.hourly,
         alerts: live.tisseo.alerts,
+        events,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [days.join(), live.hubArrivals, live.weather, live.tisseo],
   );
   const [picked, setPicked] = useState<string | null>(null);
+  const [allEvents, setAllEvents] = useState(false);
+  // Liste complète à venir (au-delà des jours couverts par les prévisions).
+  const upcomingEvents = events.list
+    .map((e) => ({ e, when: e.debut ?? e.creneaux?.[0]?.debut ?? e.quotidien?.du ?? e.date ?? '' }))
+    .filter((x) => (x.e.quotidien ? x.e.quotidien.au : x.when.slice(0, 10)) >= today)
+    .sort((a, b) => (a.when < b.when ? -1 : 1));
   const f = forecasts.find((x) => x.date === picked) ?? forecasts.find((x) => x.date === today) ?? forecasts[0];
   if (!f) return <EmptyState title="Pas de prévision" text="Les données de la semaine ne sont pas encore chargées." />;
   const nowHour = f.date === today ? new Date().getHours() : undefined;
@@ -139,13 +147,15 @@ function ForecastView() {
             return [
               `affluence ${Math.round(h.index * 100)} / 100`,
               h.travellers.total ? `≈ ${n0(h.travellers.total)} voyageurs grandes lignes` : 'pas d’arrivée grandes lignes',
+              ...(h.leaving ? [`≈ ${n0(h.leaving)} personnes sortent d’un événement`] : []),
               h.rainMm === null ? 'météo pas encore prévue' : h.rainMm >= 0.2 ? `pluie ${h.rainMm.toLocaleString('fr-FR')} mm/h` : 'sec',
             ].join(' · ');
           }}
         />
         <Text style={font.tiny}>
           Touchez une barre pour le détail. 100 = heure la plus chargée de la semaine affichée. Activité de la ville
-          (emplois, habitants, lieux selon l’heure et le jour) 60 %, arrivées grandes lignes 30 %, pluie 10 %.
+          (emplois, habitants, lieux selon l’heure et le jour) 50 %, arrivées grandes lignes 25 %, sorties
+          d’événements 15 %, pluie 10 %.
         </Text>
       </Card>
 
@@ -175,6 +185,55 @@ function ForecastView() {
         remplissage (hypothèse). Horaires SNCF, FlixBus et BlaBlaCar Bus (open data).
       </Text>
 
+      <SectionTitle>Événements du jour</SectionTitle>
+      <Card style={{ gap: spacing.md }}>
+        {f.events.length === 0 ? (
+          <Text style={font.small}>Aucun match, concert ou salon dans la liste pour ce jour.</Text>
+        ) : (
+          f.events.map((o) => {
+            const allDay = o.event.type === 'salon' || o.event.type === 'marche';
+            return (
+              <View key={`${o.event.id}-${o.start}`} style={{ gap: 2 }}>
+                <Row style={{ gap: spacing.sm }}>
+                  <PartyPopper size={16} color={colors.primary} />
+                  <Text style={[font.h3, { flex: 1 }]}>{o.event.nom}</Text>
+                  <Text style={font.small}>{o.start < 0 ? '—' : allDay ? `${hmEvent(o.start)}–${hmEvent(o.end)}` : hmEvent(o.start)}</Text>
+                </Row>
+                <Text style={font.small}>
+                  {o.venue ? `${o.venue.nom} · ` : ''}
+                  {o.event.affluence ? `≈ ${n0(o.event.affluence)} personnes · ` : ''}
+                  {o.start < 0 ? 'heure à confirmer' : allDay ? `fermeture ${hmEvent(o.end)}` : `sortie vers ${hmEvent(o.end)}`}
+                </Text>
+                {o.event.aConfirmer && <Text style={[font.tiny, { color: colors.warning }]}>À confirmer : {o.event.aConfirmer}</Text>}
+              </View>
+            );
+          })
+        )}
+        <Pressable onPress={() => setAllEvents((v) => !v)} accessibilityRole="button" style={{ minHeight: 40, justifyContent: 'center' }}>
+          <Text style={[font.small, { color: colors.primary, fontWeight: '700' }]}>
+            {allEvents ? 'Masquer la liste' : `Voir tous les événements à venir (${upcomingEvents.length})`}
+          </Text>
+        </Pressable>
+        {allEvents &&
+          upcomingEvents.map(({ e, when }) => (
+            <Text key={e.id} style={font.small}>
+              <Text style={{ fontWeight: '700', color: colors.text }}>
+                {e.quotidien
+                  ? `${shortD(e.quotidien.du)} → ${shortD(e.quotidien.au)}`
+                  : e.creneaux && e.creneaux.length > 1
+                    ? `${shortD(e.creneaux[0].debut)} → ${shortD(e.creneaux[e.creneaux.length - 1].debut)}`
+                    : `${longDay(when.slice(0, 10))}${when.length > 10 ? ` ${when.slice(11, 16).replace(':', ' h ')}` : ''}`}
+              </Text>
+              {` · ${e.nom}`}
+              {e.aConfirmer ? ` (à confirmer : ${e.aConfirmer})` : ''}
+            </Text>
+          ))}
+        <Text style={font.tiny}>
+          Liste saisie à la main (mise à jour le {events.updated.split('-').reverse().join('/')}). Affluences estimées ;
+          durée supposée : match ≈ 2 h, concert ≈ 2 h 30.
+        </Text>
+      </Card>
+
       {f.peaks.length > 0 && (
         <>
           <SectionTitle>Pics à la gare Matabiau</SectionTitle>
@@ -202,7 +261,7 @@ function ForecastView() {
       <Card style={{ gap: spacing.sm }}>
         <Text style={font.small}>• Vols de l’aéroport (accès demandé à Aéroport Toulouse-Blagnac).</Text>
         <Text style={font.small}>
-          • Matchs, concerts, salons : l’agenda ouvert de Toulouse Métropole n’est plus à jour ; source à trouver.
+          • Événements hors de la liste saisie (autres salles, fêtes privées, matchs de handball ou de basket).
         </Text>
         <Text style={font.small}>• Demande réelle des plateformes (Uber, Bolt) : non publique.</Text>
       </Card>
@@ -214,6 +273,10 @@ function ForecastView() {
   );
 }
 
+const shortD = (iso: string) => {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+};
 const hm = (m: number) => `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
 
 /** Voyageurs par tranche de 2 h (5–7 h, 7–9 h, … 23–24 h). */

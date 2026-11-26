@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { cycles, type Cycle } from '../src/journal/cycles';
 import type { EventType, JournalEvent } from '../src/journal/store';
 import { scoreZones } from '../src/domain/zoneScore';
-import { activity, hubArrivals, hubs, kmPerUnit, tisseo, weather, zones } from '../src/data/zones';
+import { activity, events, hubArrivals, hubs, kmPerUnit, tisseo, weather, zones } from '../src/data/zones';
 
 const TYPES: Record<string, EventType> = {
   'Début de service': 'debut',
@@ -75,6 +75,7 @@ for (const r of rows) {
     weather: weather.hourly,
     kmPerUnit,
     activity,
+    events,
   });
   r.modelRank = s.findIndex((x) => x.zoneId === r.course.zoneId) + 1;
 }

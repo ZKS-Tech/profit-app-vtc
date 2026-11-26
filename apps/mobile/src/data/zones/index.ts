@@ -2,6 +2,7 @@
 // - toulouse-zones.json : 60 grands quartiers INSEE (Toulouse Métropole, Licence Ouverte) — services/zones
 // - tisseo-perturbations.json : relevé temps réel Tisséo (ODbL) — services/tisseo
 // - activite.json : emplois (SIRENE) et lieux (OpenStreetMap) par zone — services/zones/build_activity.py
+// - evenements.json : matchs, concerts, salons — liste saisie à la main (à mettre à jour)
 // - calendrier.json : vacances scolaires et jours fériés — services/zones/build_calendar.py
 // - meteo-toulouse.json : Météo-France observation + AROME (Licence Ouverte) — services/weather
 import type { Hub, TisseoAlert, WeatherHour, Zone } from '../../domain/zoneScore';
@@ -12,6 +13,10 @@ import tisseoFile from './tisseo-perturbations.json';
 import meteoFile from './meteo-toulouse.json';
 import activiteFile from './activite.json';
 import calendrierFile from './calendrier.json';
+import evenementsFile from './evenements.json';
+import type { CityEvent, Venue } from '../../domain/events';
+import { zoneAt } from '../../domain/geo';
+import { project } from '../../domain/ranking';
 import type { Activity, Calendar } from '../../domain/activity';
 import { aeroportCarsDays, gareRoutiereDays, matabiauDays } from '../arrivals';
 
@@ -52,3 +57,15 @@ export const activity = {
 };
 export const activitySources = activiteFile.sources;
 export const jobsEstimated = activiteFile.emploisEstimes.communes as string[];
+
+/** Événements (liste saisie à la main) et leurs lieux, placés sur la carte. */
+export const events = {
+  updated: evenementsFile.miseAJour,
+  source: evenementsFile.source,
+  list: evenementsFile.evenements as CityEvent[],
+  venues: (evenementsFile.lieux as Venue[]).map((v) => {
+    const p = project(v.lat, v.lon, projection);
+    return { ...v, x: p.x, y: p.y, zoneId: zoneAt(p, zones, kmPerUnit)?.id ?? null };
+  }),
+};
+export type EventData = typeof events;

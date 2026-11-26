@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Building2, ChevronLeft, ChevronRight, CloudRain, Navigation, PartyPopper, Plane, Sun, X, Zap } from 'lucide-react-native';
 import { Card, Row, Screen, SectionTitle, Segmented, SourceNote } from '../../components/ui';
 import { ZoneMap } from '../../components/ZoneMap';
-import { activity, activitySources, hubs, jobsEstimated, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
+import { activity, activitySources, events, hubs, jobsEstimated, kmPerUnit, projection, zones, zonesSource } from '../../data/zones';
 import { centreIds, project, rankZones, relaunchAdvice, trafficAt, unproject, type RankMode } from '../../domain/ranking';
 import { saveShownAdvice } from '../../journal/store';
 import { zoneAt } from '../../domain/geo';
@@ -100,6 +100,7 @@ export default function MapHome() {
         weather: weather.hourly,
         kmPerUnit,
         activity,
+        events,
       }),
     [date, minutes, hubArrivals, tisseo, weather],
   );
@@ -533,7 +534,8 @@ export default function MapHome() {
         <Row>
           <PartyPopper size={16} color={colors.warning} />
           <Text style={[font.small, { flex: 1 }]}>
-            Événements (matchs, concerts, salons) : aucune source ouverte à jour. Calendrier à constituer.
+            Événements : liste saisie à la main (mise à jour le {events.updated.split('-').reverse().join('/')}), affluences
+            estimées. Les matchs et concerts à venir sont à vérifier ; les autres événements ne sont pas comptés.
           </Text>
         </Row>
         {jobsEstimated.length > 0 && (

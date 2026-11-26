@@ -1,0 +1,128 @@
+{
+  "miseAJour": "2026-11-26",
+  "source": "Liste saisie à la main d'après les billetteries et calendriers officiels (TFC, Stade Toulousain, Zénith, MEETT, Toulouse Métropole). Affluences = estimations.",
+  "lieux": [
+    { "id": "stadium", "nom": "Stadium", "lat": 43.5833, "lon": 1.4342 },
+    { "id": "ernest-wallon", "nom": "Stade Ernest-Wallon", "lat": 43.6225, "lon": 1.4155 },
+    { "id": "zenith", "nom": "Zénith", "lat": 43.5985, "lon": 1.418 },
+    { "id": "meett", "nom": "MEETT (Aussonne)", "lat": 43.6832, "lon": 1.3181 },
+    { "id": "capitole", "nom": "Place du Capitole", "lat": 43.6045, "lon": 1.444 }
+  ],
+  "evenements": [
+    {
+      "id": "marche-noel-2026",
+      "nom": "Marché de Noël",
+      "type": "marche",
+      "lieu": "capitole",
+      "quotidien": { "du": "2026-11-26", "au": "2026-12-27", "ouverture": "10:30", "fermeture": "21:00", "fermetureVenSam": "22:00" },
+      "affluence": 6000,
+      "aConfirmer": "horaires 2026 non publiés (horaires 2025)"
+    },
+    {
+      "id": "tgs-2026",
+      "nom": "TGS Occitanie Game Show",
+      "type": "salon",
+      "lieu": "meett",
+      "creneaux": [
+        { "debut": "2026-11-28T10:00", "fin": "2026-11-28T19:00" },
+        { "debut": "2026-11-29T10:00", "fin": "2026-11-29T18:30" }
+      ],
+      "affluence": 15000
+    },
+    { "id": "hallyday", "nom": "David Hallyday", "type": "concert", "lieu": "zenith", "debut": "2026-12-01T20:00", "affluence": 6000 },
+    { "id": "disiz", "nom": "Disiz", "type": "concert", "lieu": "zenith", "debut": "2026-12-02T20:00", "affluence": 7000 },
+    { "id": "saez", "nom": "Saez", "type": "concert", "lieu": "zenith", "debut": "2026-12-03T20:30", "affluence": 7000 },
+    { "id": "capeo", "nom": "Claudio Capéo", "type": "concert", "lieu": "zenith", "debut": "2026-12-04T20:00", "affluence": 6000 },
+    { "id": "st-racing", "nom": "Stade Toulousain – Racing 92 (Top 14)", "type": "match", "lieu": "ernest-wallon", "debut": "2026-12-05T14:30", "affluence": 19000 },
+    {
+      "id": "tfc-psg",
+      "nom": "TFC – PSG (Ligue 1)",
+      "type": "match",
+      "lieu": "stadium",
+      "debut": "2026-12-05T20:00",
+      "affluence": 32000,
+      "aConfirmer": "17 h ou 20 h selon les sources (une source : vendredi 4/12)"
+    },
+    {
+      "id": "artisans-art",
+      "nom": "Salon Créateurs & Artisans d’art",
+      "type": "salon",
+      "lieu": "meett",
+      "creneaux": [
+        { "debut": "2026-12-09T10:00", "fin": "2026-12-09T19:00" },
+        { "debut": "2026-12-10T10:00", "fin": "2026-12-10T19:00" },
+        { "debut": "2026-12-11T10:00", "fin": "2026-12-11T22:00" },
+        { "debut": "2026-12-12T10:00", "fin": "2026-12-12T19:00" },
+        { "debut": "2026-12-13T10:00", "fin": "2026-12-13T19:00" }
+      ],
+      "affluence": 4000
+    },
+    { "id": "laroque-merad", "nom": "Michèle Laroque & Kad Merad", "type": "concert", "lieu": "zenith", "debut": "2026-12-10T20:00", "affluence": 5000, "aConfirmer": "heure supposée (20 h)" },
+    { "id": "dire-straits", "nom": "The Dire Straits Experience", "type": "concert", "lieu": "zenith", "debut": "2026-12-11T20:00", "affluence": 5000 },
+    {
+      "id": "salon-etudiant",
+      "nom": "Salons de l’Étudiant",
+      "type": "salon",
+      "lieu": "meett",
+      "creneaux": [{ "debut": "2026-12-12T09:30", "fin": "2026-12-12T17:30" }],
+      "affluence": 4000,
+      "aConfirmer": "horaires supposés"
+    },
+    { "id": "casse-noisette", "nom": "Casse-Noisette", "type": "concert", "lieu": "zenith", "debut": "2026-12-13T16:00", "affluence": 5000 },
+    { "id": "pagny-1", "nom": "Florent Pagny", "type": "concert", "lieu": "zenith", "debut": "2026-12-14T20:00", "affluence": 7000, "aConfirmer": "heure supposée (20 h)" },
+    { "id": "pagny-2", "nom": "Florent Pagny", "type": "concert", "lieu": "zenith", "debut": "2026-12-15T20:00", "affluence": 7000, "aConfirmer": "heure supposée (20 h)" },
+    { "id": "feu-chatterton", "nom": "Feu! Chatterton", "type": "concert", "lieu": "zenith", "debut": "2026-12-16T20:00", "affluence": 6000, "aConfirmer": "heure supposée (20 h)" },
+    {
+      "id": "monte-cristo",
+      "nom": "Monte-Cristo (comédie musicale)",
+      "type": "concert",
+      "lieu": "zenith",
+      "date": "2026-12-18",
+      "affluence": 6000,
+      "aConfirmer": "18 et 19/12, peut-être annulé"
+    },
+    {
+      "id": "st-toulon",
+      "nom": "Stade Toulousain – Toulon (Top 14)",
+      "type": "match",
+      "lieu": "stadium",
+      "date": "2026-12-26",
+      "affluence": 33000,
+      "aConfirmer": "samedi 26 ou dimanche 27/12, heure à confirmer"
+    },
+    { "id": "harry-potter", "nom": "Harry Potter en ciné-concert", "type": "concert", "lieu": "zenith", "debut": "2026-12-28T20:00", "affluence": 5000, "aConfirmer": "heure supposée (20 h)" },
+    { "id": "kpop", "nom": "K-Pop Forever", "type": "concert", "lieu": "zenith", "debut": "2026-12-29T20:00", "affluence": 5000, "aConfirmer": "heure supposée (20 h)" },
+    {
+      "id": "reveillon",
+      "nom": "Réveillon du Nouvel An",
+      "type": "ville",
+      "date": "2026-12-31",
+      "affluence": 0,
+      "aConfirmer": "toute la ville, surtout après minuit"
+    },
+    { "id": "tfc-angers", "nom": "TFC – Angers (Ligue 1)", "type": "match", "lieu": "stadium", "debut": "2027-01-02T20:00", "affluence": 22000 },
+    { "id": "queen", "nom": "One Night of Queen", "type": "concert", "lieu": "zenith", "debut": "2027-01-05T20:00", "affluence": 5000 },
+    {
+      "id": "st-saracens",
+      "nom": "Stade Toulousain – Saracens (Champions Cup)",
+      "type": "match",
+      "lieu": "ernest-wallon",
+      "debut": "2027-01-17T16:15",
+      "affluence": 19000,
+      "aConfirmer": "15 h 15 ou 16 h 15 selon les sources"
+    },
+    { "id": "berger-gall", "nom": "Hommage Michel Berger et France Gall", "type": "concert", "lieu": "zenith", "debut": "2027-01-20T20:00", "affluence": 5000, "aConfirmer": "heure supposée (20 h)" },
+    { "id": "gcm", "nom": "Grand Corps Malade", "type": "concert", "lieu": "zenith", "debut": "2027-01-21T20:00", "affluence": 6000 },
+    {
+      "id": "st-rochelle",
+      "nom": "Stade Toulousain – La Rochelle (Top 14)",
+      "type": "match",
+      "lieu": "ernest-wallon",
+      "date": "2027-01-23",
+      "affluence": 19000,
+      "aConfirmer": "heure à confirmer"
+    },
+    { "id": "tfc-nice", "nom": "TFC – Nice (Ligue 1)", "type": "match", "lieu": "stadium", "debut": "2027-01-23T20:00", "affluence": 22000, "aConfirmer": "19 h 45 ou 20 h" },
+    { "id": "tfc-lens", "nom": "TFC – Lens (Ligue 1)", "type": "match", "lieu": "stadium", "debut": "2027-01-30T20:00", "affluence": 25000, "aConfirmer": "date et heure à confirmer" }
+  ]
+}

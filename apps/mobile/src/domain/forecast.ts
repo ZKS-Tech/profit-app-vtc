@@ -6,6 +6,7 @@
 // jours de la semaine. À calibrer avec les journaux de terrain et l'historique de courses.
 import { activityAt, dayInfo, dayLabelOf, type Activity, type Calendar } from './activity';
 import { int } from './format';
+import { eventsOfDay, hm, leavingDuring, occurrencesOn, type CityEvent, type Occurrence, type Venue } from './events';
 import { findPeaks, type ArrivalDay, type Peak } from './arrivals';
 import type { HubArrivals, TisseoAlert, WeatherHour, Zone } from './zoneScore';
 
@@ -18,7 +19,9 @@ const TRAVELLERS_REF = 2000;
 /** Pluie (mm/h) qui donne la contribution « météo » maximale. */
 const RAIN_REF_MM = 2;
 /** Poids de l'indice horaire (hypothèses v0). */
-const W = { activity: 0.6, transport: 0.3, rain: 0.1 };
+const W = { activity: 0.5, transport: 0.25, events: 0.15, rain: 0.1 };
+/** Spectateurs sortant en une heure qui donnent la contribution « événements » maximale (hypothèse). */
+const LEAVING_REF = 15000;
 /** Heures couvertes par une « journée » (5 h → minuit). */
 export const DAY_HOURS = Array.from({ length: 19 }, (_, i) => i + 5);
 
@@ -29,6 +32,8 @@ export type HourForecast = {
   activity: number; // 0–1, relatif à la semaine
   travellers: { matabiau: number; gareRoutiere: number; aeroport: number; total: number };
   rainMm: number | null; // null = pas encore de prévision
+  /** Spectateurs qui sortent d'un match, d'un concert ou d'un salon pendant l'heure. */
+  leaving: number;
 };
 
 export type DayForecast = {
@@ -46,6 +51,8 @@ export type DayForecast = {
   reasons: string[];
   peaks: Peak[];
   rainKnown: boolean;
+  /** Événements du jour (matchs, concerts, salons), y compris ceux dont l'heure est à confirmer. */
+  events: Occurrence[];
 };
 
 const HUBS: { id: string; key: keyof Omit<HourForecast['travellers'], 'total'> }[] = [
@@ -80,20 +87,23 @@ export function forecastDays(params: {
   activity: { data: Record<string, Activity>; calendar: Calendar };
   weather?: WeatherHour[];
   alerts?: TisseoAlert[];
+  events?: { list: CityEvent[]; venues: Venue[] };
 }): DayForecast[] {
   const { days, zones, arrivals, activity } = params;
   // 1. Valeurs brutes par jour et par heure.
-  const raw = days.map((date) =>
-    DAY_HOURS.map((hour) => {
+  const raw = days.map((date) => {
+    const occ = params.events ? occurrencesOn(params.events.list, params.events.venues, date).filter((o) => o.venue) : [];
+    return DAY_HOURS.map((hour) => {
       const act = activityAt(activity.data, zones, date, hour * 60 + 30, activity.calendar, { detail: false }).total;
       const t = { matabiau: 0, gareRoutiere: 0, aeroport: 0, total: 0 };
       for (const h of HUBS) {
         t[h.key] = travellersAt(arrivals.find((a) => a.hubId === h.id)?.days[date], hour);
         t.total += t[h.key];
       }
-      return { hour, act, travellers: t, rainMm: rainAt(params.weather, date, hour) };
-    }),
-  );
+      const leaving = occ.reduce((s, o) => s + leavingDuring(o, hour), 0);
+      return { hour, act, travellers: t, rainMm: rainAt(params.weather, date, hour), leaving };
+    });
+  });
   // 2. Activité relative à l'heure la plus active de la semaine affichée.
   const actMax = Math.max(1e-6, ...raw.flat().map((r) => r.act));
   const perDay = raw.map((hours, i) => {
@@ -102,8 +112,9 @@ export function forecastDays(params: {
       const index =
         W.activity * activityN +
         W.transport * Math.min(1, r.travellers.total / TRAVELLERS_REF) +
+        W.events * Math.min(1, r.leaving / LEAVING_REF) +
         W.rain * (r.rainMm === null ? 0 : Math.min(1, r.rainMm / RAIN_REF_MM));
-      return { hour: r.hour, index, activity: activityN, travellers: r.travellers, rainMm: r.rainMm };
+      return { hour: r.hour, index, activity: activityN, travellers: r.travellers, rainMm: r.rainMm, leaving: r.leaving };
     });
     const index = hs.reduce((s, h) => s + h.index, 0) / hs.length;
     return { date: days[i], hs, index };
@@ -139,7 +150,20 @@ export function forecastDays(params: {
     const rainKnown = hours.some((h) => h.rainMm !== null);
     const matabiau = arrivals.find((a) => a.hubId === 'matabiau')?.days[date];
     const peaks = matabiau ? findPeaks(matabiau, 3) : [];
+    const dayEvents = params.events ? eventsOfDay(params.events.list, params.events.venues, date) : [];
     const reasons: string[] = [];
+    // Les gros événements d'abord (ceux qui font une soirée).
+    for (const o of [...dayEvents].sort((a, b) => b.event.affluence - a.event.affluence).slice(0, 2)) {
+      if (!o.event.affluence) continue;
+      const where = o.venue ? ` (${o.venue.nom})` : '';
+      const when =
+        o.start < 0
+          ? 'heure à confirmer'
+          : o.event.type === 'salon' || o.event.type === 'marche'
+            ? `jusqu’à ${hm(o.end)}`
+            : `sortie vers ${hm(o.end)}`;
+      reasons.push(`${o.event.nom}${where} : ${when}, ≈ ${int(o.event.affluence)} personnes`);
+    }
     if (d.ferie) reasons.push(`Jour férié (${d.ferie}) : peu de trajets domicile–travail`);
     else if (d.dow === 5) reasons.push('Vendredi : sorties du soir et départs en week-end');
     else if (d.dow === 6) reasons.push('Samedi : commerces l’après-midi, vie nocturne le soir');
@@ -174,6 +198,7 @@ export function forecastDays(params: {
       reasons,
       peaks,
       rainKnown,
+      events: dayEvents,
     };
   });
 }

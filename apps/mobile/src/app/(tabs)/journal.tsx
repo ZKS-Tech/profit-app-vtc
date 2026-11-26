@@ -6,7 +6,7 @@ import { AmountPad } from '../../components/AmountPad';
 import { Gauge } from '../../components/Gauge';
 import { useSettings } from '../../settings/store';
 import { Card, Row, Screen, SectionTitle, SourceNote } from '../../components/ui';
-import { activity, hubs, kmPerUnit, projection, zones } from '../../data/zones';
+import { activity, events as cityEvents, hubs, kmPerUnit, projection, zones } from '../../data/zones';
 import { useLiveData } from '../../data/live';
 import { zoneAt } from '../../domain/geo';
 import { project } from '../../domain/ranking';
@@ -144,6 +144,7 @@ export default function JournalScreen() {
           weather: live.weather.hourly,
           kmPerUnit,
           activity,
+          events: cityEvents,
         });
         extra.appTop = zones.find((z) => z.id === scores[0].zoneId)?.name;
         const i = scores.findIndex((s) => s.zoneId === extra.zoneId);
