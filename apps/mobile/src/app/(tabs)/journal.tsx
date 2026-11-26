@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { CarFront, Flag, Play, Send, ThumbsDown, ThumbsUp, TriangleAlert, Undo2, Meh, UserCheck, X } from 'lucide-react-native';
@@ -41,16 +41,24 @@ const PLATFORMS: { id: Platform; color: string }[] = [
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const pad = (n: number) => String(n).padStart(2, '0');
 
+/**
+ * Position pour le journal : la dernière position connue si elle date de moins de 2 min (immédiat),
+ * sinon une nouvelle mesure (quelques secondes, au plus 8). Appelée APRÈS l'enregistrement de l'appui.
+ */
 async function position(): Promise<{ lat: number; lon: number } | null> {
   try {
-    const perm = await Location.requestForegroundPermissionsAsync();
+    let perm = await Location.getForegroundPermissionsAsync();
+    if (perm.status !== 'granted' && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== 'granted') return null;
-    const p = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      new Promise<null>((r) => setTimeout(() => r(null), 8000)),
-    ]);
-    const last = p ?? (await Location.getLastKnownPositionAsync());
-    return last ? { lat: last.coords.latitude, lon: last.coords.longitude } : null;
+    const recent = await Location.getLastKnownPositionAsync({ maxAge: 120_000, requiredAccuracy: 300 });
+    const p =
+      recent ??
+      (await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<null>((r) => setTimeout(() => r(null), 8000)),
+      ])) ??
+      (await Location.getLastKnownPositionAsync());
+    return p ? { lat: p.coords.latitude, lon: p.coords.longitude } : null;
   } catch {
     return null;
   }
@@ -90,25 +98,37 @@ export default function JournalScreen() {
     };
   }, []);
 
+  // Toujours la dernière version du journal, même dans les tâches qui finissent après un autre appui.
+  const eventsRef = useRef<JournalEvent[]>([]);
+  eventsRef.current = events;
   const persist = useCallback(async (next: JournalEvent[]) => {
+    eventsRef.current = next;
     setEvents(next);
     await saveJournal(next);
   }, []);
 
-  /** Ajoute un événement avec la position et ce que l'app conseillait à cet instant. */
+  /**
+   * Ajoute un événement : enregistré et affiché tout de suite (heure de l'appui), puis complété en
+   * arrière-plan avec la position, la zone et ce que l'app conseillait à cet instant.
+   */
   const add = useCallback(
     async (partial: Omit<JournalEvent, 'id' | 'ts'>) => {
       setBusy(true);
       const now = new Date();
       const ev: JournalEvent = { id: `${now.getTime()}`, ts: now.toISOString(), ...partial };
+      await persist([...eventsRef.current, ev]);
+      // Court délai anti double appui, puis les boutons sont de nouveau actifs.
+      setTimeout(() => setBusy(false), 400);
+
       const pos = await position();
+      const extra: Partial<JournalEvent> = {};
       if (pos) {
-        ev.lat = Math.round(pos.lat * 1000) / 1000;
-        ev.lon = Math.round(pos.lon * 1000) / 1000;
+        extra.lat = Math.round(pos.lat * 1000) / 1000;
+        extra.lon = Math.round(pos.lon * 1000) / 1000;
         const z = zoneAt(project(pos.lat, pos.lon, projection), zones, kmPerUnit);
         if (z) {
-          ev.zoneId = z.id;
-          ev.zoneName = z.name;
+          extra.zoneId = z.id;
+          extra.zoneName = z.name;
         }
       }
       const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -125,17 +145,19 @@ export default function JournalScreen() {
           kmPerUnit,
           activity,
         });
-        ev.appTop = zones.find((z) => z.id === scores[0].zoneId)?.name;
-        const i = scores.findIndex((s) => s.zoneId === ev.zoneId);
+        extra.appTop = zones.find((z) => z.id === scores[0].zoneId)?.name;
+        const i = scores.findIndex((s) => s.zoneId === extra.zoneId);
         if (i >= 0) {
-          ev.appScore = scores[i].score;
-          ev.appRank = i + 1;
+          extra.appScore = scores[i].score;
+          extra.appRank = i + 1;
         }
       }
-      await persist([...events, ev]);
-      setBusy(false);
+      // L'événement a pu être annulé entre-temps : on ne complète que s'il existe encore.
+      if (Object.keys(extra).length && eventsRef.current.some((e) => e.id === ev.id)) {
+        await persist(eventsRef.current.map((e) => (e.id === ev.id ? { ...e, ...extra } : e)));
+      }
     },
-    [events, live, persist],
+    [live, persist],
   );
 
   const { status, since } = statusOf(events);
