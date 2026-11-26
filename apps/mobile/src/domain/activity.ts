@@ -3,6 +3,8 @@
 //
 // Profils et poids = hypothèses v0, à calibrer avec l'historique Uber/Bolt et le journal de terrain.
 
+import { int } from './format';
+
 export type Activity = {
   emplois: number;
   habitants: number;
@@ -44,6 +46,27 @@ const LABEL: Record<Category, string> = {
   nuit: 'vie nocturne',
   spectacles: 'salles et stades',
 };
+
+/**
+ * Part fixe de chaque catégorie par zone (poids × √(niveau ÷ niveau max)), calculée une seule fois.
+ * Emplois et habitants : total ÷ √surface, compromis entre volume (grande commune = plus de demandes)
+ * et concentration (petite zone dense = prise en charge plus rapide). Les lieux restent en nombre.
+ */
+const baseCache = new WeakMap<object, Record<string, Record<Category, number>>>();
+function baseOf(data: Record<string, Activity>, zones: { id: string; areaKm2: number }[]) {
+  const hit = baseCache.get(data);
+  if (hit && zones.every((z) => z.id in hit)) return hit;
+  const area = Object.fromEntries(zones.map((z) => [z.id, Math.sqrt(Math.max(0.5, z.areaKm2))]));
+  const level = (id: string, c: Category) =>
+    (data[id]?.[c] ?? 0) / (c === 'emplois' || c === 'habitants' ? area[id] : 1);
+  const cats = Object.keys(WEIGHT) as Category[];
+  const max = Object.fromEntries(cats.map((c) => [c, Math.max(1e-6, ...zones.map((z) => level(z.id, c)))]));
+  const out: Record<string, Record<Category, number>> = {};
+  for (const z of zones)
+    out[z.id] = Object.fromEntries(cats.map((c) => [c, WEIGHT[c] * Math.sqrt(level(z.id, c) / max[c])])) as Record<Category, number>;
+  baseCache.set(data, out);
+  return out;
+}
 
 export function dayInfo(date: string, cal: Calendar): DayInfo {
   const dow = new Date(`${date}T12:00:00`).getDay(); // 0 = dimanche
@@ -106,16 +129,12 @@ export function activityAt(
   date: string,
   minutes: number,
   cal: Calendar,
+  opts: { detail?: boolean } = {},
 ): { value: Record<string, number>; detail: Record<string, string>; day: DayInfo; total: number } {
   const d = dayInfo(date, cal);
   const h = Math.floor(minutes / 60) % 24;
   const zoneIds = zones.map((z) => z.id);
-  // Emplois et habitants : total ÷ √surface, compromis entre volume (grande commune = plus de demandes)
-  // et concentration (petite zone dense = prise en charge plus rapide). Les lieux restent en nombre.
-  const area = Object.fromEntries(zones.map((z) => [z.id, Math.sqrt(Math.max(0.5, z.areaKm2))]));
-  const level = (id: string, c: Category) =>
-    (data[id]?.[c] ?? 0) / (c === 'emplois' || c === 'habitants' ? area[id] : 1);
-  const max = Object.fromEntries(CATS.map((c) => [c, Math.max(1e-6, ...zoneIds.map((id) => level(id, c)))]));
+  const base = baseOf(data, zones);
   const raw: Record<string, number> = {};
   const parts: Record<string, { cat: Category; v: number }[]> = {};
   for (const id of zoneIds) {
@@ -125,7 +144,7 @@ export function activityAt(
       continue;
     }
     // Racine carrée : rendements décroissants (deux fois plus d'emplois ≠ deux fois plus de courses).
-    parts[id] = CATS.map((c) => ({ cat: c, v: WEIGHT[c] * Math.sqrt(level(id, c) / max[c]) * profile(c, h, d) }));
+    parts[id] = CATS.map((c) => ({ cat: c, v: base[id][c] * profile(c, h, d) }));
     raw[id] = parts[id].reduce((s, p) => s + p.v, 0);
   }
   const top = Math.max(1e-6, ...Object.values(raw));
@@ -133,13 +152,14 @@ export function activityAt(
   const detail: Record<string, string> = {};
   for (const id of zoneIds) {
     value[id] = raw[id] / top;
+    if (opts.detail === false) continue;
     const a = data[id];
     const main = (parts[id] ?? []).filter((p) => p.v > 0.01).sort((x, y) => y.v - x.v).slice(0, 2);
     detail[id] = main.length
       ? main
           .map((p) =>
             p.cat === 'emplois' || p.cat === 'habitants'
-              ? `≈ ${Math.round(a![p.cat]).toLocaleString('fr-FR')} ${LABEL[p.cat]}`
+              ? `≈ ${int(a![p.cat])} ${LABEL[p.cat]}`
               : `${LABEL[p.cat]} (${Math.round(a![p.cat])})`,
           )
           .join(' · ')

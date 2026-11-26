@@ -5,6 +5,7 @@
 // Le résultat est un potentiel de demande (0–100), pas un revenu ni un nombre de courses.
 
 import type { ArrivalDay } from './arrivals';
+import { dec, int } from './format';
 import { activityAt, dayLabelOf, type Activity, type Calendar } from './activity';
 
 export type Zone = {
@@ -157,7 +158,7 @@ export function scoreZones(params: {
               label: 'Densité de population',
               // Racine carrée : la demande ne croît pas proportionnellement au nombre d'habitants (hypothèse).
               value: Math.sqrt(z.density / maxDensity),
-              detail: `${z.density.toLocaleString('fr-FR')} hab./km² (INSEE 2019)`,
+              detail: `${int(z.density)} hab./km² (INSEE 2019)`,
             },
         {
           key: 'disruption',
@@ -176,7 +177,7 @@ export function scoreZones(params: {
           detail:
             rain.mean < 0.2
               ? 'Pas de pluie prévue (Météo-France AROME)'
-              : `Pluie prévue : ${rain.mean.toLocaleString('fr-FR')} mm/h en moyenne, jusqu’à ${rain.max.toLocaleString('fr-FR')} mm/h (Météo-France AROME)`,
+              : `Pluie prévue : ${dec(rain.mean)} mm/h en moyenne, jusqu’à ${dec(rain.max)} mm/h (Météo-France AROME)`,
         });
       }
       const totalW = factors.reduce((s, f) => s + WEIGHTS[f.key], 0);

@@ -5,6 +5,7 @@
 // pluie prévue. Ce n'est pas la demande réelle des plateformes : c'est une estimation, comparée aux autres
 // jours de la semaine. À calibrer avec les journaux de terrain et l'historique de courses.
 import { activityAt, dayInfo, dayLabelOf, type Activity, type Calendar } from './activity';
+import { int } from './format';
 import { findPeaks, type ArrivalDay, type Peak } from './arrivals';
 import type { HubArrivals, TisseoAlert, WeatherHour, Zone } from './zoneScore';
 
@@ -84,7 +85,7 @@ export function forecastDays(params: {
   // 1. Valeurs brutes par jour et par heure.
   const raw = days.map((date) =>
     DAY_HOURS.map((hour) => {
-      const act = activityAt(activity.data, zones, date, hour * 60 + 30, activity.calendar).total;
+      const act = activityAt(activity.data, zones, date, hour * 60 + 30, activity.calendar, { detail: false }).total;
       const t = { matabiau: 0, gareRoutiere: 0, aeroport: 0, total: 0 };
       for (const h of HUBS) {
         t[h.key] = travellersAt(arrivals.find((a) => a.hubId === h.id)?.days[date], hour);
@@ -147,7 +148,7 @@ export function forecastDays(params: {
     if (travellersTotal) {
       const busiest = [...hours].sort((a, b) => b.travellers.total - a.travellers.total)[0];
       reasons.push(
-        `≈ ${travellersTotal.toLocaleString('fr-FR')} voyageurs grandes lignes attendus (pic ${fmtH(busiest.hour)}–${fmtH(busiest.hour + 1)} : ≈ ${busiest.travellers.total.toLocaleString('fr-FR')})`,
+        `≈ ${int(travellersTotal)} voyageurs grandes lignes attendus (pic ${fmtH(busiest.hour)}–${fmtH(busiest.hour + 1)} : ≈ ${int(busiest.travellers.total)})`,
       );
     }
     if (rainy.length) reasons.push(`Pluie prévue ${fmtH(rainy[0].hour)}–${fmtH(rainy[rainy.length - 1].hour + 1)} : la demande monte`);

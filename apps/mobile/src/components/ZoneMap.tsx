@@ -54,6 +54,44 @@ export function ZoneMap({
 
   const k = vb.w / FULL; // facteur d'échelle pour garder traits et repères à taille constante
 
+  // Un seul rafraîchissement par image pendant un geste (sinon des dizaines de rendus par seconde).
+  const pending = useRef<VB | null>(null);
+  const frame = useRef<number | null>(null);
+  const setVbThrottled = (v: VB) => {
+    pending.current = v;
+    if (frame.current !== null) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      if (pending.current) setVb(pending.current);
+    });
+  };
+
+  // Les tracés des 90 zones ne dépendent ni du zoom ni de la position : ils ne sont recalculés que si les
+  // couleurs ou la sélection changent (traits à épaisseur fixe à l'écran grâce à non-scaling-stroke).
+  const latest = useRef({ excluded, onSelect });
+  latest.current = { excluded, onSelect };
+  const fills = zones.map((z) => fillOf(z.id));
+  const fillKey = fills.join();
+  const paths = useMemo(
+    () =>
+      zones.map((z, i) => {
+        const isSel = z.id === selectedId;
+        return (
+          <Path
+            key={z.id}
+            d={z.path}
+            fill={fills[i]}
+            stroke={isSel ? '#FFFFFF' : '#0A111F'}
+            strokeWidth={isSel ? 2.5 : 0.8}
+            vectorEffect="non-scaling-stroke"
+            onPress={() => !latest.current.excluded(z.id) && latest.current.onSelect(z.id)}
+          />
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [zones, fillKey, selectedId],
+  );
+
   const zoomBy = (factor: number, center?: Pt) => {
     const v = vbRef.current;
     const c = center ?? { x: v.x + v.w / 2, y: v.y + v.w / 2 };
@@ -94,9 +132,9 @@ export function ZoneMap({
           const w = Math.min(FULL, Math.max(MIN_W, (g.start.w * g.d) / Math.max(d, 1)));
           const anchor = { x: g.start.x + g.mid.x * upp, y: g.start.y + g.mid.y * upp };
           const nupp = w / size.current.w;
-          setVb(clampVb({ w, x: anchor.x - mid.x * nupp, y: anchor.y - mid.y * nupp }));
+          setVbThrottled(clampVb({ w, x: anchor.x - mid.x * nupp, y: anchor.y - mid.y * nupp }));
         } else if (t.length === 1) {
-          setVb(clampVb({ w: g.start.w, x: g.start.x - (t[0].x - g.mid.x) * upp, y: g.start.y - (t[0].y - g.mid.y) * upp }));
+          setVbThrottled(clampVb({ w: g.start.w, x: g.start.x - (t[0].x - g.mid.x) * upp, y: g.start.y - (t[0].y - g.mid.y) * upp }));
         }
       },
       onPanResponderRelease: () => {
@@ -121,21 +159,7 @@ export function ZoneMap({
       {...responder.panHandlers}
     >
       <Svg width="100%" height="100%" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.w}`}>
-        <G>
-          {zones.map((z) => {
-            const isSel = z.id === selectedId;
-            return (
-              <Path
-                key={z.id}
-                d={z.path}
-                fill={fillOf(z.id)}
-                stroke={isSel ? '#FFFFFF' : '#0A111F'}
-                strokeWidth={(isSel ? 3 : 1) * Math.max(k, 0.25)}
-                onPress={() => !excluded(z.id) && onSelect(z.id)}
-              />
-            );
-          })}
-        </G>
+        <G>{paths}</G>
         {showLabels &&
           zones.filter(visible).map((z) => (
             <G key={`l-${z.id}`}>
