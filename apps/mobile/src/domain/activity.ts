@@ -106,7 +106,7 @@ export function activityAt(
   date: string,
   minutes: number,
   cal: Calendar,
-): { value: Record<string, number>; detail: Record<string, string>; day: DayInfo } {
+): { value: Record<string, number>; detail: Record<string, string>; day: DayInfo; total: number } {
   const d = dayInfo(date, cal);
   const h = Math.floor(minutes / 60) % 24;
   const zoneIds = zones.map((z) => z.id);
@@ -145,7 +145,8 @@ export function activityAt(
           .join(' · ')
       : 'Peu d’activité à cette heure';
   }
-  return { value, detail, day: d };
+  // total : activité cumulée de l'agglomération à cette heure (sert aux prévisions de la journée).
+  return { value, detail, day: d, total: Object.values(raw).reduce((x, y) => x + y, 0) };
 }
 
 export const dayLabelOf = (d: DayInfo) =>

@@ -67,3 +67,40 @@ export function journalStats(all: JournalEvent[], days: number | null, now = Dat
     },
   };
 }
+
+/** Vos créneaux : €/h et attente par tranche de 2 h (heure d'acceptation), tous jours confondus. */
+export function bySlot(all: JournalEvent[]) {
+  const slots = new Map<number, Cycle[]>();
+  for (const c of cycles(all)) {
+    const h = new Date(c.course.ts).getHours();
+    const k = Math.floor(h / 2) * 2;
+    slots.set(k, [...(slots.get(k) ?? []), c]);
+  }
+  return [...slots.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([from, cs]) => ({ from, to: from + 2, rides: cs.length, avgWait: avg(cs.map((c) => c.waitMin)), eurPerHour: eurPerHour(cs) }));
+}
+
+/** Vos journées : heures de service, courses, montants et €/h, de la plus récente à la plus ancienne. */
+export function byDay(all: JournalEvent[], now = Date.now()) {
+  const days = new Map<string, JournalEvent[]>();
+  for (const e of all) {
+    const d = new Date(e.ts);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    days.set(k, [...(days.get(k) ?? []), e]);
+  }
+  return [...days.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([date, evs]) => {
+      const hours = serviceHours(evs, now);
+      const amounts = evs.filter((e) => e.type === 'fin-course' && e.amount !== undefined).map((e) => e.amount!);
+      const revenue = amounts.reduce((s, a) => s + a, 0);
+      return {
+        date,
+        hours,
+        rides: evs.filter((e) => e.type === 'course').length,
+        revenue: amounts.length ? revenue : null,
+        eurPerHour: amounts.length && hours > 0 ? revenue / hours : null,
+      };
+    });
+}
