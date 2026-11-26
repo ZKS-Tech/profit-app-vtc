@@ -4,6 +4,8 @@ import type { JournalEvent } from './store';
 
 /** Pause plus courte que ça entre « fin » et « début » de service = attente, pas une vraie pause. */
 export const PAUSE_MIN = 45;
+/** Montant en dessous duquel une course sans client à bord est une annulation facturée (hypothèse, €). */
+const CANCEL_FEE_MAX = 7;
 /** Détour routier moyen par rapport à la ligne droite entre deux positions du journal (hypothèse). */
 const ROAD_FACTOR = 1.3;
 
@@ -20,6 +22,8 @@ export type Cycle = {
   approachKm?: number;
   tripKm?: number;
   amount?: number;
+  /** Course annulée (sans « Client à bord », fin en moins de 4 min ou montant < 7 €) : montant = frais éventuels. */
+  cancelled?: boolean;
   /** € par heure sur ce cycle : montant ÷ (attente + approche + trajet). Absent si la durée est nulle. */
   eurPerHour?: number;
 };
@@ -71,7 +75,11 @@ export function cycles(events: JournalEvent[]): Cycle[] {
           current.tripKm = roadKm(current.onboard, e);
         }
         current.amount = e.amount;
-        if (e.amount !== undefined) current.eurPerHour = perHour(e.amount, current.waitMin + current.rideMin);
+        // Sans « Client à bord » : fin presque immédiate, ou montant sous le minimum d'une course (frais d'annulation).
+        current.cancelled = !current.onboard && (current.rideMin < 4 || (e.amount !== undefined && e.amount < CANCEL_FEE_MAX));
+        // Pas de €/h pour une annulation (5 € en 1 min ferait 300 €/h) ; le montant compte dans la journée.
+        if (e.amount !== undefined && !current.cancelled)
+          current.eurPerHour = perHour(e.amount, current.waitMin + current.rideMin);
         delete current.onboard;
         current = null;
       }

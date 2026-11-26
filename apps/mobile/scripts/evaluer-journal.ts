@@ -92,7 +92,7 @@ for (const r of rows) {
       `${r.approachMin ?? '?'} min`.padStart(8),
       `${r.tripMin ?? r.rideMin ?? '?'} min`.padStart(6),
       `${r.amount?.toFixed(2) ?? '—'} €`.padStart(8),
-      `${r.eurPerHour === undefined ? '—' : Math.round(r.eurPerHour)}`.padStart(5),
+      `${r.cancelled ? 'annul.' : r.eurPerHour === undefined ? '—' : Math.round(r.eurPerHour)}`.padStart(6),
       `${r.course.appRank ?? '—'}`.padStart(9),
       `${r.modelRank ?? '—'}`.padStart(12),
     ].join(' '),

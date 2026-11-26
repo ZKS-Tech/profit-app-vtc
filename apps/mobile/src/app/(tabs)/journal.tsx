@@ -447,7 +447,8 @@ export default function JournalScreen() {
   );
 }
 
-function cycleText(c: { approachMin?: number; tripMin?: number; rideMin?: number; eurPerHour?: number }) {
+function cycleText(c: { approachMin?: number; tripMin?: number; rideMin?: number; eurPerHour?: number; cancelled?: boolean }) {
+  if (c.cancelled) return ' · course annulée';
   const parts = [
     c.approachMin !== undefined ? `approche ${c.approachMin} min` : null,
     c.tripMin !== undefined ? `trajet ${c.tripMin} min` : c.rideMin !== undefined ? `course ${c.rideMin} min` : null,
