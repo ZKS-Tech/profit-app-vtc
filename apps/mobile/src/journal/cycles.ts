@@ -52,12 +52,16 @@ export function cycles(events: JournalEvent[]): Cycle[] {
   const out: Cycle[] = [];
   let availableSince: string | null = null;
   let stopped: { at: string; available: string | null } | null = null;
+  // L'attente ne continue à travers un arrêt court que si elle a commencé à une dépose : un « début » suivi
+  // d'une « fin » sans course (appui par erreur, trajet depuis le domicile) ne compte pas comme attente.
+  let sinceDrop = false;
   let current: (Cycle & { onboard?: JournalEvent }) | null = null;
   for (const e of events) {
     if (e.type === 'debut') {
       const resume: string | null =
         stopped && stopped.available && minutesBetween(stopped.at, e.ts) <= PAUSE_MIN ? stopped.available : null;
       availableSince = resume ?? e.ts;
+      sinceDrop = resume !== null;
       stopped = null;
     } else if (e.type === 'course') {
       current = { course: e, waitMin: availableSince ? minutesBetween(availableSince, e.ts) : 0 };
@@ -84,8 +88,9 @@ export function cycles(events: JournalEvent[]): Cycle[] {
         current = null;
       }
       availableSince = e.ts;
+      sinceDrop = true;
     } else if (e.type === 'fin') {
-      stopped = { at: e.ts, available: availableSince };
+      stopped = { at: e.ts, available: sinceDrop ? availableSince : null };
       availableSince = null;
       current = null;
     }
